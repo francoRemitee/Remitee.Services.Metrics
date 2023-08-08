@@ -165,7 +165,7 @@ namespace Remitee.Services.Metrics
 
 		}
 
-		public void UpdateReceivers(int year, int month, IConfigurationRoot config)
+		public void UpdateReceivers(int year, int month, IConfigurationRoot config)	
 		{
 			string ledgerConnString = config.GetConnectionString("LedgerConnString");
 			var parsedData = new List<Models.Receiver>();
@@ -565,262 +565,12 @@ namespace Remitee.Services.Metrics
 		public void UpdateCorredores(int year, int month)
 		{
 			var results = new List<Corredore>();
-			var queryTransactionalBase = $@"select newid() as Id,
-											year(x.Date) as Year, 
-                                            month(x.Date) as Month,
-                                            x.SourceCountryName,
-                                            x.SourceCountryCode, 
-                                            x.TargetCountryName,
-                                            x.TargetCountryCode,
-                                            count(*) as Count,
-                                            sum(x.isREMITEE) as Count_Remitee,
-                                            sum(x.isINBOUND) as Count_Inbound,
-                                            sum(x.isTOPUP) as Count_TOPUP,
-                                            sum(x.isMT) as Count_MT,
-                                            sum(x.PplAmountREMITEE) as GTV_Remitee,
-                                            sum(x.PplAmountINBOUND) as GTV_Inbound,
-                                            sum(x.PplAmountREMITEE)+sum(x.PplAmountINBOUND) as GTV_Total,
-                                            sum(x.PplAmountTOPUP) as GTV_TOPUP,
-                                            sum(x.PplAmountMT) as GTV_MT,
-                                            sum(x.AmountREMITEE) as NTV_Remitee,
-                                            sum(x.AmountINBOUND) as NTV_Inbound,
-                                            sum(x.AmountREMITEE)+sum(x.AmountINBOUND) as NTV_Total,
-                                            sum(x.AmountTOPUP) as NTV_TOPUP,
-                                            sum(x.AmountMT) as NTV_MT,
-                                            sum(x.FeeREMITEE) as Fee_Remitee,
-                                            sum(x.FeeINBOUND) as Fee_Inbound,
-                                            sum(x.FeeTOTAL) as Fee_Total,
-                                            sum(x.SpreadREMITEE) as Spread_Remitee,
-                                            sum(x.SpreadINBOUND) as Spread_Inbound,
-                                            sum(x.SpreadTOTAL) as Spread_Total
-
-
-
-                                            from (select t.CreatedAt as Date,
-		                                            t.SourceCountryName, 
-		                                            t.SourceCountryCode,
-		                                            t.TargetCountryName,
-		                                            t.TargetCountryCode,
-		                                            t.Status,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then 1
-			                                            else 0
-		                                            end as isTOPUP,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then 0
-			                                            else 1
-		                                            end as isMT,
-		                                            case 
-			                                            when t.Client='REMITEE'
-			                                            then t.NetAmountUSD
-			                                            else 0
-			                                            end as PplAmountREMITEE,
-
-		
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then 0
-			                                            else t.NetAmountUSD
-			                                            end as PplAmountINBOUND,
-		                                            0 as PplAmountTOPUP,
-		                                            case 
-			                                            when t.CollectMethod != 'TOPUP'
-			                                            then t.NetAmountUSD
-			                                            else 0
-			                                            end as PplAmountMT,
-
-
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then  case 
-					                                            when t.SourceCurrency = 'ARS' and t.TargetCurrency='ARS'
-					                                            then (t.NetAmountSC + t.FeeAmountSC)/t.ARSExchangeRate
-					                                            when t.SourceCurrency = 'CLP' and t.TargetCurrency='ARS'
-					                                            then (t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC
-					                                            else ((t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC)*(1-t.SpreadRate)
-				                                            end
-			                                            else 0
-			                                            end as AmountREMITEE,
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then 0
-			                                            else t.NetAmountUSD + t.FeeAmountUSD
-			                                            end as AmountINBOUND,
-		                                            0 as AmountTOPUP,
-		                                            case 
-			                                            when t.CollectMethod != 'TOPUP'
-			                                            then case t.Client
-					                                            when 'REMITEE'
-					                                            then  case 
-							                                            when t.SourceCurrency = 'ARS' and t.TargetCurrency='ARS'
-							                                            then (t.NetAmountSC + t.FeeAmountSC)/t.ARSExchangeRate
-							                                            when t.SourceCurrency = 'CLP' and t.TargetCurrency='ARS'
-							                                            then (t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC
-							                                            else ((t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC)*(1-t.SpreadRate)
-						                                            end
-					                                            else t.NetAmountUSD + t.FeeAmountUSD
-				                                            end
-			                                            else 0
-			                                            end as AmountMT,
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then 1
-			                                            else 0
-			                                            end as isREMITEE,
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then 0
-			                                            else 1
-			                                            end as isINBOUND,
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then t.FeeAmountUSD
-			                                            else 0
-			                                            end as FeeREMITEE,
-		                                            case t.Client
-			                                            when 'REMITEE'
-			                                            then 0
-			                                            else t.FeeAmountUSD
-			                                            end as FeeINBOUND, 
-		                                            t.FeeAmountUSD as FeeTOTAL,
-		                                            t.SpreadAmountUSD as SpreadTOTAL,
-		                                            case 
-			                                            when t.Client='REMITEE' 
-			                                            then t.SpreadAmountUSD
-			                                            else 0
-			                                            end as SpreadREMITEE,
-		                                            case 
-			                                            when t.Client='REMITEE' 
-			                                            then 0
-			                                            else t.SpreadAmountUSD
-													end as SpreadINBOUND
-
-		                                            from TransactionalBase t
-		                                            where t.Source='MoneyTransfer' and t.status!='REVERSED'
-	                                            ---- fin MoneyTransfer ----
-	                                            union
-	                                            ---- inicio Ledger ----
-		                                            select t.CreatedAt as Date,
-		                                            t.SourceCountryName, 
-		                                            t.SourceCountryCode,
-		                                            t.TargetCountryName,
-		                                            t.TargetCountryCode,
-		                                            t.Status,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then 1
-			                                            else 0
-		                                            end as isTOPUP,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then 0
-			                                            else 1
-		                                            end as isMT,
-		                                            t.NetAmountUSD as PplAmountREMITEE,
-
-		
-		                                            0 as PplAmountINBOUND,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then t.NetAmountUSD
-			                                            else 0
-			                                            end as PplAmountTOPUP,
-		                                            case 
-			                                            when t.CollectMethod != 'TOPUP'
-			                                            then t.NetAmountUSD
-			                                            else 0
-			                                            end as PplAmountMT,
-		                                            case 
-			                                            when t.SourceCountryCode='ARG' and t.TargetCountryCode='ARG'
-			                                            then t.GrossAmountSC/t.ARSExchangeRate
-			                                            when t.SourceCountryCode='CHL' and t.TargetCountryCode='CHL'
-			                                            then t.GrossAmountSC/t.CLPExchangeRate
-			                                            else t.GrossAmountSC*t.ExchangeRateSC
-			                                            end as AmountREMITEE,
-		                                            0 as AmountINBOUND,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then case 
-								                                            when t.SourceCountryCode='ARG' and t.TargetCountryCode='ARG'
-								                                            then t.GrossAmountSC/t.ARSExchangeRate
-								                                            when t.SourceCountryCode='CHL' and t.TargetCountryCode='CHL'
-								                                            then t.GrossAmountSC/t.CLPExchangeRate
-								                                            else t.GrossAmountSC*t.ExchangeRateSC
-							                                            end
-			                                            else 0 end as AmountTOPUP,
-		                                            case 
-			                                            when t.CollectMethod != 'TOPUP'
-			                                            then case 
-					                                            when t.SourceCountryCode='ARG' and t.TargetCountryCode='ARG'
-					                                            then t.GrossAmountSC/t.ARSExchangeRate
-					                                            when t.SourceCountryCode='CHL' and t.TargetCountryCode='CHL'
-					                                            then t.GrossAmountSC/t.CLPExchangeRate
-					                                            else t.GrossAmountSC*t.ExchangeRateSC
-				                                            end
-			                                            else 0
-			                                            end as AmountMT,
-		                                            1 as isREMITEE,
-		                                            0 as isINBOUND,
-		                                            t.FeeAmountUSD as FeeREMITEE,
-		                                            0 as FeeINBOUND, 
-		                                            t.FeeAmountUSD as FeeTOTAL,
-		                                            t.SpreadAmountUSD as SpreadTOTAL,
-		                                            t.SpreadAmountUSD as SpreadREMITEE,
-		                                            0 as SpreadINBOUND
-
-		                                            from TransactionalBase t
-		                                            where t.Source='Ledger' and t.status!='REVERSED'
-	                                            ---- fin Ledger ----
-	                                            union
-	                                            ---- inicio Wallet ----
-		                                            select t.CreatedAt as Date,
-		                                            t.SourceCountryName, 
-		                                            t.SourceCountryCode,
-		                                            t.TargetCountryName,
-		                                            t.TargetCountryCode,
-		                                            t.Status,
-		                                            1 as isTOPUP,
-		                                            0 as isMT,
-		                                            t.NetAmountUSD as PplAmountREMITEE,
-		                                            0 as PplAmountINBOUND,
-		                                            case t.CollectMethod
-			                                            when 'TOPUP' then t.NetAmountUSD
-			                                            else 0
-			                                            end as PplAmountTOPUP,
-		                                            0 as PplAmountMT,
-		                                            case
-			                                            when t.SourceCurrency='CLP'
-			                                            then t.GrossAmountSC/t.CLPExchangeRate
-			                                            when t.SourceCurrency='ARS'
-			                                            then t.GrossAmountSC/t.ARSExchangeRate
-			                                            else 0
-		                                            end as AmountREMITEE,
-		                                            0 as AmountINBOUND,
-		                                            case
-			                                            when t.SourceCurrency='CLP'
-			                                            then t.GrossAmountSC/t.CLPExchangeRate
-			                                            when t.SourceCurrency='ARS'
-			                                            then t.GrossAmountSC/t.ARSExchangeRate
-			                                            else 0
-		                                            end as AmountTOPUP,
-		                                            0 as AmountMT,
-		                                            1 as isREMITEE,
-		                                            0 as isINBOUND,
-		                                            0 as FeeREMITEE,
-		                                            0 as FeeINBOUND, 
-		                                            0 as FeeTOTAL,
-		                                            0 as SpreadTOTAL,
-		                                            0 as SpreadREMITEE,
-		                                            0 as SpreadINBOUND
-
-		                                            from TransactionalBase t
-		                                            where t.Source='Wallet' and t.status!='REVERSED'
-                                            ) x
-                                            where year(x.Date)=@year and month(x.Date)=@month
-                                            group by year(x.Date), month(x.Date), x.SourceCountryName, x.SourceCountryCode, x.TargetCountryName, x.TargetCountryCode
-                                            order by [year] desc, [month] desc";
-
+			
 			using (var ctx = new RemiteeServicesMetricsContext())
 			{
 
 				var corredores = (from t in ctx.TransactionalBases
-								  where t.CreatedAt.Year == year && t.CreatedAt.Month == month
+								  where t.CreatedAt.Year == year && t.CreatedAt.Month == month && t.Status != "REVERSED"
 								  select new TransactionalBase(t, 1)).ToList()
 							   .GroupBy(x => new
 							   {
@@ -907,7 +657,10 @@ namespace Remitee.Services.Metrics
 								isnull(t.SourceCurrency,sc.currencyCode) as SourceCurrency,
 								isnull(p.currency,tc.currencyCode) as TargetCurrency,
 								t.amount/(1+t.sourceTransactionFee*(1+t.sourceTaxRate)) as NetAmountSC,
-								t.RecipientAmount*targetToUSDExchangeRate as NetAmountUSD,
+								case
+								when t.collectMethod=8 then isnull(t.amountUSD,t.RecipientAmount*targetToUSDExchangeRate)
+								else t.RecipientAmount*targetToUSDExchangeRate 
+								end as NetAmountUSD,
 								t.amount as GrossAmountSC,
 								1/nullif(t.sourceToUSDExchangeRate,0) as ExchangeRateSC,
 								null as SpreadAmountUSD,
@@ -984,117 +737,139 @@ namespace Remitee.Services.Metrics
 
                         ";
 			var queryMoneyTransfer = @"select p.Id,
-										p.transactionId as LedgerId,
-										'MoneyTransfer' as Source,
-										p.CreatedAt,
-										null as SourceCountryName,
-										case
-											when c.Code='PAYRETAILERS'
-											then 'ESP'
-											when c.Code = 'PREXCARD'
-											then 'URY'
-											else isnull(p.BillingInfo_Ctry,p.UserInfo_Dbtr_PstlAdr_Ctry) 
-											end as SourceCountryCode,
-										null as TargetCountryName,
-										q.TargetCountry as TargetCountryCode,
-										case p.Status
-											when 5 then 'REVERSED'
-											when 4 then 'COMPLETED'
-											when 3 then 'SETTLED'
-											end as Status,
-										case pa.CollectMethod
-											when 0 then 'CASH'
-											when 1 then 'MONEY TRANSFER'
-											when 2 then 'WALLET'
-											end as CollectMethod,
-										c.Code as Client,
-										concat(py.VendorCode,'-',q.CollectMethod, '-',q.TargetCurrency,'-',q.TargetCountry) as OBPartner,
-										pa.Name as OBPartnerName,
-										isnull(p.BillingInfo_Fx_Currency,'USD') as SourceCurrency,
-										q.TargetCurrency,
-										isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)) as NetAmountSC,
-										qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0) as NetAmountUSD,
-										isnull(p.BillingInfo_NetAmount+p.BillingInfo_Commission_Amount+p.BillingInfo_Vat_Amount,qe.SendingAmount) as GrossAmountSC,
-										isnull(p.BillingInfo_Fx_Rate,qe.SourceToUSD) as ExchangeRateSC,
-										null as SpreadAmountUSD,
-										isnull(p.BillingInfo_Fx_Spread,qe.FxSpread) as SpreadRate,
-										case
-										when qe.MarketPlaceBaseFee>0
-										then round((greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount/(2*(1-isnull(qe.SellerFxSpread,0)))
-										else isnull(p.BillingInfo_Commission_Amount,qe.sendingFee)
-										end as FeeAmountSC,
-										isnull(nullif(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee),0),qe.sendingFee) as FeeAmountUSD,
-										isnull(p.BillingInfo_Commission_Rate,qe.SendingFee/(qe.SendingAmount-qe.SendingFee)) as FeeRate,
-										case
-										when qe.MarketPlaceBaseFee>0
-										then round((greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount*qe.SellerVatPercent/(2*(1-isnull(qe.SellerFxSpread,0)))
-										else isnull(p.BillingInfo_Vat_Amount,qe.SellerVatRemitee)
-										end as VATSC,
-										qe.SellerVATRemitee as VATUSD,
-										isnull(p.BillingInfo_Vat_Rate,qe.SellerVATRemitee/nullif(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee),0)) as VATRate,
-										qe.ReceivingAmount as TargetAmountTC,
-										qe.FxRate as ExchangeRateTC,
-										qe.MarketExchangeRate,
-										py.Code as PayerRoute,
-										py.VendorCode as Payer,
-										null as ARSExchangeRate,
-										null as CLPExchangeRate,
-										null as ARSRExchangeRate,
-										null as CLPRExchangeRate,
-										qe.ReceivingAmount*(1-isnull(p.WithholdingPercentages_IncomeWithholdingPercentage,0)-isnull(p.WithholdingPercentages_VatWithholdingPercentage,0)) as TargetAmountTCwithoutWithholding,
-										p.WithholdingPercentages_IncomeWithholdingPercentage*qe.ReceivingAmount as WithholdingIncomeAmount,
-										p.WithholdingPercentages_VatWithholdingPercentage*qe.ReceivingAmount as WithholdingVATAmount,
-										p.WithholdingPercentages_IncomeWithholdingPercentage as WithholdingIncomeRate,
-										p.WithholdingPercentages_VatWithholdingPercentage as WithholdingVATRate,
-										qe.ReceivingAmount/nullif(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)),0) as 'AccountingFxRate',
-										qe.ReceivingAmount/(nullif(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)),0)*(1-qe.FxSpread)) as 'AccountingFxRateWithoutSp',
-										(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0))*(1-qe.FxSpread)) as 'AccountingNetAmount',
-										isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0))*isnull(p.BillingInfo_Fx_Spread,qe.FxSpread) as 'SpreadAmountSc',
-										null as AccountingAgentCommission	,
-										p.SettledAt,
-										p.CompletedAt,
-										p.ReversedAt,
-										case
-										  when py.vendorCode = 'cienxcienbanco' then 'CIEN X CIEN BANCO'
-										  when py.code like '%movii%' then 'MOVII'
-										  when py.vendorCode = 'transferzero' and py.code like '%EUR%' then 'TRANSFERZERO EUR'
-										  when py.vendorCode = 'transferzero' and py.code not like '%EUR%' then 'TRANSFERZERO USD'
-										  when py.vendorCode = 'localpayment' and py.code like '%BRL%' then 'LOCAL PAY. Brazil'
-										  when py.vendorCode = 'localpayment' and py.code like '%MXN%' then 'LOCAL PAY. Mexico'
-										  when py.vendorCode = 'localpayment' and py.code like '%UYU%' then 'LOCAL PAY. Uruguay'
-										  when py.vendorCode = 'localpayment' and py.code like '%COP%' then 'LOCAL PAY. Colombia'
-										  when py.vendorCode = 'interbank' and py.code like '%PEN%' then 'INTERBANK Soles'
-										  when py.vendorCode = 'interbank' and py.code like '%USD%' then 'INTERBANK USD'
-										  when py.vendorCode = 'EASYPAGOS' then 'EASY PAGOS'
-										  when py.vendorCode = 'bancobisa' then 'BANCO BISA'
-										  when py.vendorCode = 'bancosol' then 'BANCO SOLIDARIO'
-										  when py.vendorCode = 'maxicambios' then 'MAXICAMBIO Outbound'
-										  when py.code like '%sogebank%' then 'SOGEBANK'
-										  when py.code like '%b89%' then 'B89'
-										  when py.vendorCode = 'pontual' then 'PONTUAL Outbound'
-										  else py.vendorCode
-										end as Vendor,
-										p.ReferenceId,
-										case 
-										when qe.MarketPlaceBaseFee>0
-										then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount/(2*(1-isnull(qe.SellerFxSpread,0)))
-										else 0
-										end as MarketPlaceFeeAmount,
-										case 
-										when qe.MarketPlaceBaseFee>0
-										then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SendingAmount/(2*(1-isnull(qe.SellerFxSpread,0))*nullif(qe.amountUSD,0)) 
-										else 0
-										end as MarketPlaceFeeRate,
-										case 
-										when qe.MarketPlaceBaseFee>0
-										then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount*qe.SellerVatPercent/(2*(1-isnull(qe.SellerFxSpread,0)))
-										else 0
-										end as MarketPlaceVATAmount,
-										qe.SellerVatPercent as MarketPlaceVATRate,
-										p.payerPaymentCode as PayerReferenceId,
-										qe.SellerFx/(1-isnull(qe.SellerFxSpread,0)) as MarketPlaceExchangeRate,
-										greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee) as MarketPlaceFeeAmountUsd,
-										greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)*qe.SellerVatPercent as MarketPlaceVatAmountUsd
+		p.transactionId as LedgerId,
+		'MoneyTransfer' as Source,
+		p.CreatedAt,
+		null as SourceCountryName,
+		case
+			when c.Code='PAYRETAILERS'
+			then 'ESP'
+			when c.Code = 'PREXCARD'
+			then 'URY'
+			else isnull(p.BillingInfo_Ctry,p.UserInfo_Dbtr_PstlAdr_Ctry) 
+			end as SourceCountryCode,
+		null as TargetCountryName,
+		q.TargetCountry as TargetCountryCode,
+		case p.Status
+			when 5 then 'REVERSED'
+			when 4 then 'COMPLETED'
+			when 3 then 'SETTLED'
+			end as Status,
+		case pa.CollectMethod
+			when 0 then 'CASH'
+			when 1 then 'MONEY TRANSFER'
+			when 2 then 'WALLET'
+			end as CollectMethod,
+		c.Code as Client,
+		concat(py.VendorCode,'-',q.CollectMethod, '-',q.TargetCurrency,'-',q.TargetCountry) as OBPartner,
+		pa.Name as OBPartnerName,
+		isnull(p.BillingInfo_Fx_Currency,'USD') as SourceCurrency,
+		q.TargetCurrency,
+		isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)) as NetAmountSC,
+		qe.SendingAmount-qe.sendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0) as NetAmountUSD,
+		isnull(p.BillingInfo_NetAmount+p.BillingInfo_Commission_Amount+p.BillingInfo_Vat_Amount,qe.SendingAmount) as GrossAmountSC,
+		isnull(p.BillingInfo_Fx_Rate,qe.SourceToUSD) as ExchangeRateSC,
+		null as SpreadAmountUSD,
+		isnull(p.BillingInfo_Fx_Spread,qe.FxSpread) as SpreadRate,
+		case
+		when qe.MarketPlaceBaseFee>0
+		then round((greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount/(1-isnull(qe.SellerFxSpread,0))*greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)/(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))
+		else isnull(p.BillingInfo_Commission_Amount,qe.sendingFee)
+		end as FeeAmountSC,
+		case 
+		when c.Code='BANCO_ESTADO' 
+		then case
+			when pa.collectMethod in (1,2) 
+			then case
+				when q.targetCountry in ('ARG','BRA','MEX') then 1
+				when q.targetCountry in ('ECU','BOL','PER','PRY','VEN','COL','URY','SEN') then 1.5
+				when q.targetCurrency = 'EUR' then 2
+				when q.targetCountry in ('USA','GTM','NIC','SLV','DOM','CRI') then 2
+				when q.targetCountry = 'HTI' then 4.5
+				when q.targetCountry = 'CHN' then 5
+				else 0
+				end
+			else case
+				when q.targetCountry in ('ARG','ECU','BOL','PRY','SEN') then 1.5
+				when q.targetCountry in ('COL','PER') then 2
+				when q.targetCountry = 'MEX' then 2.5
+				when q.targetCountry in ('HTI','VEN') then 5
+				else 0
+				end
+			end
+		else isnull(nullif(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee),0),qe.sendingFee) 
+		end as FeeAmountUSD,
+		isnull(p.BillingInfo_Commission_Rate,qe.SendingFee/(qe.SendingAmount-qe.SendingFee)) as FeeRate,
+		case
+		when qe.MarketPlaceBaseFee>0
+		then round((greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount*qe.SellerVatPercent/(1-isnull(qe.SellerFxSpread,0))*greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)/(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))
+		else isnull(p.BillingInfo_Vat_Amount,qe.SellerVatRemitee)
+		end as VATSC,
+		qe.SellerVATRemitee as VATUSD,
+		isnull(p.BillingInfo_Vat_Rate,qe.SellerVATRemitee/nullif(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee),0)) as VATRate,
+		qe.ReceivingAmount as TargetAmountTC,
+		qe.FxRate as ExchangeRateTC,
+		qe.MarketExchangeRate,
+		py.Code as PayerRoute,
+		py.VendorCode as Payer,
+		null as ARSExchangeRate,
+		null as CLPExchangeRate,
+		null as ARSRExchangeRate,
+		null as CLPRExchangeRate,
+		qe.ReceivingAmount*(1-isnull(p.WithholdingPercentages_IncomeWithholdingPercentage,0)-isnull(p.WithholdingPercentages_VatWithholdingPercentage,0)) as TargetAmountTCwithoutWithholding,
+		p.WithholdingPercentages_IncomeWithholdingPercentage*qe.ReceivingAmount as WithholdingIncomeAmount,
+		p.WithholdingPercentages_VatWithholdingPercentage*qe.ReceivingAmount as WithholdingVATAmount,
+		p.WithholdingPercentages_IncomeWithholdingPercentage as WithholdingIncomeRate,
+		p.WithholdingPercentages_VatWithholdingPercentage as WithholdingVATRate,
+		qe.ReceivingAmount/nullif(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)),0) as 'AccountingFxRate',
+		qe.ReceivingAmount/(nullif(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0)),0)*(1-qe.FxSpread)) as 'AccountingFxRateWithoutSp',
+		(isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0))*(1-qe.FxSpread)) as 'AccountingNetAmount',
+		isnull(p.BillingInfo_NetAmount,qe.SendingAmount-qe.SendingFee-isnull(qe.SellerVATRemitee+qe.SellerVATMarketPlace,0))*isnull(p.BillingInfo_Fx_Spread,qe.FxSpread) as 'SpreadAmountSc',
+		null as AccountingAgentCommission	,
+		p.SettledAt,
+		p.CompletedAt,
+		p.ReversedAt,
+		case
+			when py.vendorCode = 'cienxcienbanco' then 'CIEN X CIEN BANCO'
+			when py.code like '%movii%' then 'MOVII'
+			when py.vendorCode = 'transferzero' and py.code like '%EUR%' then 'TRANSFERZERO EUR'
+			when py.vendorCode = 'transferzero' and py.code not like '%EUR%' then 'TRANSFERZERO USD'
+			when py.vendorCode = 'localpayment' and py.code like '%BRL%' then 'LOCAL PAY. Brazil'
+			when py.vendorCode = 'localpayment' and py.code like '%MXN%' then 'LOCAL PAY. Mexico'
+			when py.vendorCode = 'localpayment' and py.code like '%UYU%' then 'LOCAL PAY. Uruguay'
+			when py.vendorCode = 'localpayment' and py.code like '%COP%' then 'LOCAL PAY. Colombia'
+			when py.vendorCode = 'interbank' and py.code like '%PEN%' then 'INTERBANK Soles'
+			when py.vendorCode = 'interbank' and py.code like '%USD%' then 'INTERBANK USD'
+			when py.vendorCode = 'EASYPAGOS' then 'EASY PAGOS'
+			when py.vendorCode = 'bancobisa' then 'BANCO BISA'
+			when py.vendorCode = 'bancosol' then 'BANCO SOLIDARIO'
+			when py.vendorCode = 'maxicambios' then 'MAXICAMBIO Outbound'
+			when py.code like '%sogebank%' then 'SOGEBANK'
+			when py.code like '%b89%' then 'B89'
+			when py.vendorCode = 'pontual' then 'PONTUAL Outbound'
+			else py.vendorCode
+		end as Vendor,
+		p.ReferenceId,
+		case 
+		when qe.MarketPlaceBaseFee>0
+		then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount/(1-isnull(qe.SellerFxSpread,0))*greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)/(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))
+		else 0
+		end as MarketPlaceFeeAmount,
+		case 
+		when qe.MarketPlaceBaseFee>0
+		then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SendingAmount/((1-isnull(qe.SellerFxSpread,0))*nullif(qe.amountUSD,0))*greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)/(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))
+		else 0
+		end as MarketPlaceFeeRate,
+		case 
+		when qe.MarketPlaceBaseFee>0
+		then round((greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)+greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee))/nullif(qe.sendingAmount,0),4)*qe.SellerFx*qe.SendingAmount*qe.SellerVatPercent/(1-isnull(qe.SellerFxSpread,0))*greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee)/(greatest(qe.RemiteeBaseFee,qe.RemiteePercentFee)+greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee))
+		else 0
+		end as MarketPlaceVATAmount,
+		qe.SellerVatPercent as MarketPlaceVATRate,
+		p.payerPaymentCode as PayerReferenceId,
+		qe.SellerFx/(1-isnull(qe.SellerFxSpread,0)) as MarketPlaceExchangeRate,
+		greatest(qe.MarketPlaceBaseFee,qe.MarketPlacePercentFee) as MarketPlaceFeeAmountUsd,
+		qe.SellerVATMarketPlace as MarketPlaceVatAmountUsd
 
 								from mt.Payments p
 								left join mt.QuoteElements qe on qe.QuoteId=p.QuoteId
@@ -1231,7 +1006,9 @@ namespace Remitee.Services.Metrics
 			}
 			using (var ctx = new RemiteeServicesMetricsContext())
 			{
-				ctx.TransactionalBases.Where(x => x.CreatedAt >= dateFrom && x.CreatedAt < dateTo).ExecuteDelete();
+				ctx.ChangeTracker.AutoDetectChangesEnabled = false;
+				ctx.Database.SetCommandTimeout(300);
+				//ctx.TransactionalBases.Where(x => x.CreatedAt >= dateFrom && x.CreatedAt < dateTo).ExecuteDelete();
 				parsedData = (from dl in dataLedger.AsEnumerable()
 							  select new TransactionalBase(dl))
 						  .Union(from dmt in dataMoneyTransfer.AsEnumerable()
@@ -1240,8 +1017,42 @@ namespace Remitee.Services.Metrics
 								 select new TransactionalBase(dw))
 						  .ToList();
 
-				ctx.TransactionalBases.AddRange(parsedData);
+				var countriesList = ctx.Tccountries.ToList();
+				var arsExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+				&& x.Date <= dateTo
+				&& x.TargetCurrency == "ARS").ToList();
+				var clpExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+				&& x.Date <= dateTo
+				&& x.TargetCurrency == "CLP").ToList();
+
+				foreach (var item in parsedData)
+				{
+					if(string.IsNullOrEmpty(item.SourceCountryName))
+                    {
+						item.SourceCountryName = countriesList.Where(x => x.Isothree == item.SourceCountryCode).FirstOrDefault().Description;
+					}
+					if(string.IsNullOrEmpty(item.TargetCountryName))
+                    {
+						item.TargetCountryName = countriesList.Where(x => x.Isothree == item.TargetCountryName).FirstOrDefault().Description;
+					}
+					item.ArsexchangeRate = arsExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+					item.ClpexchangeRate = clpExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+
+					var entry = ctx.TransactionalBases.Find(item.Id);
+
+					if (entry == null)
+					{
+						ctx.TransactionalBases.Add(item);
+					}
+					else
+					{
+						ctx.Entry(entry).CurrentValues.SetValues(item);
+					}
+				}
+
 				ctx.SaveChanges();
+
+					
 				finalData = (from tb in ctx.TransactionalBases
 							 where tb.CreatedAt >= dateFrom && tb.CreatedAt < dateTo
 							 select new TransactionalBase(tb)).ToList();
@@ -1264,286 +1075,13 @@ namespace Remitee.Services.Metrics
 		public void UpdateInbound(int year, int month)
 		{
 			var results = new List<Inbound>();
-			var queryTransactionalBase = $@"select Newid() as Id,
-											year(x.Date) as Year, 
-											month(x.Date) as Month,
-											x.Client as Partner,
-											x.SourceCountryName,
-											x.SourceCountryCode, 
-											x.TargetCountryName,
-											x.TargetCountryCode,
-											count(*) as Count,
-											sum(x.isTOPUP) as CountTopup,
-											sum(x.isMT) as CountMt,
-											sum(x.PplAmountTOPUP)+sum(x.PplAmountMT) as GtvTotal,
-											sum(x.PplAmountTOPUP) as GtvTopup,
-											sum(x.PplAmountMT) as GtvMt,
-											sum(x.AmountTOPUP)+sum(x.AmountMT) as NtvTotal,
-											sum(x.AmountTOPUP) as NtvTopup,
-											sum(x.AmountMT) as NtvMt,
-											avg(nullif(x.PplAmountTOPUP+x.PplAmountMT,0)) as GtvAvg,
-											sum(x.FeeTOTAL) as Fee,
-											sum(x.SpreadTOTAL) as Spread,
-											sum(x.VAT) as Vat
-
-											from (select t.CreatedAt as Date,
-													t.SourceCountryName, 
-													t.SourceCountryCode,
-													t.TargetCountryName,
-													t.TargetCountryCode,
-													t.Status,
-													t.Client,
-													case t.CollectMethod
-														when 'TOPUP' then 1
-														else 0
-													end 
-													as isTOPUP,
-													case t.CollectMethod
-														when 'TOPUP' then 0
-														else 1
-													end 
-													as isMT,
-													0 
-													as PplAmountTOPUP,
-													case 
-														when t.CollectMethod != 'TOPUP'
-														then case t.Client
-																when 'REMITEE'
-																then  case 
-																		when t.SourceCurrency = 'ARS' and t.TargetCurrency='ARS'
-																		then t.NetAmountSC/t.ARSExchangeRate
-																		when t.SourceCurrency = 'CLP' and t.TargetCurrency='ARS'
-																		then t.NetAmountSC/t.ExchangeRateSC
-																		else (t.NetAmountSC/t.ExchangeRateSC)*(1-t.SpreadRate)
-																	end
-																else t.NetAmountUSD
-																end
-														else 0
-														end 
-													as PplAmountMT,
-													0 
-													as AmountTOPUP,
-													case 
-														when t.CollectMethod != 'TOPUP'
-														then case t.Client
-																when 'REMITEE'
-																then  case 
-																		when t.SourceCurrency = 'ARS' and t.TargetCurrency='ARS'
-																		then (t.NetAmountSC + t.FeeAmountSC)/t.ARSExchangeRate
-																		when t.SourceCurrency = 'CLP' and t.TargetCurrency='ARS'
-																		then (t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC
-																		else ((t.NetAmountSC + t.FeeAmountSC)/t.ExchangeRateSC)*(1-t.SpreadRate)
-																	end
-																else t.NetAmountUSD + t.FeeAmountUSD
-															end
-														else 0
-														end 
-													as AmountMT,
-													case 
-														when t.Client='REMITEE' and t.SourceCurrency = 'ARS'
-														then t.FeeAmountSC/t.ARSExchangeRate
-														when t.Client='REMITEE' and t.SourceCurrency = 'CLP'
-														then t.FeeRate*t.NetAmountSC/t.ExchangeRateSC
-														else t.FeeAmountUSD
-														end 
-													as FeeTOTAL,
-													case 
-														when t.Client='REMITEE' 
-														then case
-																when t.TargetCurrency='CLP' and t.SourceCurrency='ARS'
-																then t.NetAmountSC/t.ARSExchangeRate-t.NetAmountUSD--Ver 1
-																when t.TargetCurrency='ARS' and t.SourceCurrency='CLP'
-																then t.NetAmountSC/t.ExchangeRateSC-t.TargetAmountTC/t.ARSExchangeRate--Ver 2
-																else 0
-																end
-														when t.TargetCurrency = 'ARS'
-														then t.NetAmountUSD - t.TargetAmountTC/t.ARSExchangeRate  --Ver 3
-														when t.SpreadRate is null
-														then 0
-														else case
-															when t.targetCurrency='VEF'
-															then t.NetAmountUSD*t.SpreadRate
-															else t.NetAmountUSD-t.TargetAmountTC/t.MarketExchangeRate
-															end
-														end 
-													as SpreadTOTAL,
-													case 
-														when t.Client='REMITEE' and t.SourceCurrency = 'ARS'
-														then t.VATSC/t.ARSExchangeRate
-														when t.Client='REMITEE' and t.SourceCurrency = 'CLP'
-														then t.VATSC/t.ExchangeRateSC
-														else 0
-														end 
-													as VAT
-
-													from TransactionalBase t
-													where t.Source='MoneyTransfer' and t.status!='REVERSED'
-												---- fin MoneyTransfer ----
-												union
-												---- inicio Ledger ----
-													select t.CreatedAt as Date,
-													t.SourceCountryName, 
-													t.SourceCountryCode,
-													t.TargetCountryName,
-													t.TargetCountryCode,
-													t.Client,
-													t.Status,
-													case t.CollectMethod
-														when 'TOPUP' then 1
-														else 0
-													end 
-													as isTOPUP,
-													case t.CollectMethod
-														when 'TOPUP' then 0
-														else 1
-													end 
-													as isMT,
-													case t.CollectMethod
-														when 'TOPUP' then case 
-																			when t.TargetCountryCode='ARG' 
-																			then t.TargetAmountTC/t.ARSExchangeRate
-																			when t.TargetCountryCode='CHL'
-																			then t.TargetAmountTC/t.CLPExchangeRate
-																			else t.ExchangeRateTC*t.TargetAmountTC
-																		end
-														else 0
-														end 
-													as PplAmountTOPUP,
-													case 
-														when t.CollectMethod != 'TOPUP'
-														then case 
-																when t.TargetCountryCode='ARG' 
-																then t.TargetAmountTC/t.ARSExchangeRate
-																when t.TargetCountryCode='CHL'
-																then t.TargetAmountTC/t.CLPExchangeRate
-																else t.ExchangeRateTC*t.TargetAmountTC
-															end
-														else 0
-														end 
-													as PplAmountMT,
-													case t.CollectMethod
-														when 'TOPUP' then case 
-																			when t.SourceCountryCode='ARG' and t.TargetCountryCode='ARG'
-																			then t.GrossAmountSC/t.ARSExchangeRate
-																			when t.SourceCountryCode='CHL' and t.TargetCountryCode='CHL'
-																			then t.GrossAmountSC/t.CLPExchangeRate
-																			else t.GrossAmountSC*t.ExchangeRateSC
-																		end
-														else 0 end 
-													as AmountTOPUP,
-													case 
-														when t.CollectMethod != 'TOPUP'
-														then case 
-																when t.SourceCountryCode='ARG' and t.TargetCountryCode='ARG'
-																then t.GrossAmountSC/t.ARSExchangeRate
-																when t.SourceCountryCode='CHL' and t.TargetCountryCode='CHL'
-																then t.GrossAmountSC/t.CLPExchangeRate
-																else t.GrossAmountSC*t.ExchangeRateSC
-															end
-														else 0
-														end 
-													as AmountMT,
-													case 
-														when t.TargetCountryCode='ARG'
-														then t.TargetAmountTC*t.FeeRate/t.ARSExchangeRate
-														when t.TargetCountryCode='CHL'
-														then t.TargetAmountTC*t.FeeRate/t.CLPExchangeRate
-														else t.TargetAmountTC*t.FeeRate*t.ExchangeRateTC
-														end 
-													as FeeTOTAL,
-													case 
-													when t.SourceCountryCode='ARG' 
-													then case t.TargetCountryCode
-															when 'ARG'
-															then t.GrossAmountSC*(1-t.FeeRate)/t.ARSExchangeRate-t.TargetAmountTC/t.ARSExchangeRate
-															when 'CHL'
-															then t.GrossAmountSC*(1-t.FeeRate)/t.ARSExchangeRate-t.TargetAmountTC/t.CLPExchangeRate
-															else t.GrossAmountSC*(1-t.FeeRate)/t.ARSExchangeRate-t.TargetAmountTC/t.ExchangeRateTC
-														 end
-													when t.SourceCountryCode='CHL' 
-													then case t.TargetCountryCode
-															when 'ARG'
-															then t.GrossAmountSC*(1-t.FeeRate)/t.CLPExchangeRate-t.TargetAmountTC/t.ARSExchangeRate
-															when 'CHL'
-															then t.GrossAmountSC*(1-t.FeeRate)/t.CLPExchangeRate-t.TargetAmountTC/t.CLPExchangeRate
-															else t.GrossAmountSC*(1-t.FeeRate)/t.CLPExchangeRate-t.TargetAmountTC/t.ExchangeRateTC
-														 end
-													else t.NetAmountSC*t.ExchangeRateSC-t.TargetAmountTC*t.ExchangeRateTC
-													end
-													as SpreadTOTAL,
-													case 
-														when t.SourceCountryCode='ARG'
-														then t.VATSC/t.ARSExchangeRate
-														when t.SourceCountryCode='CHL'
-														then t.VATSC/t.CLPExchangeRate
-														else t.VATUSD
-													end 
-													as VAT
-		
-
-													from TransactionalBase t
-													where t.Source='Ledger' and t.status!='REVERSED'
-												---- fin Ledger ----
-												union
-												---- inicio Wallet ----
-													select t.CreatedAt as Date,
-													t.SourceCountryName, 
-													t.SourceCountryCode,
-													t.TargetCountryName,
-													t.TargetCountryCode,
-													t.Status,
-													t.Client,
-													1 as isTOPUP,
-													0 as isMT,
-													case t.CollectMethod
-														when 'TOPUP' then case
-																			when t.SourceCurrency='CLP'
-																			then t.NetAmountSC/t.CLPExchangeRate
-																			when t.SourceCurrency='ARS'
-																			then t.NetAmountSC/t.ARSExchangeRate
-																			else 0
-																		end
-														else 0
-														end 
-													as PplAmountTOPUP,
-													0 
-													as PplAmountMT,
-													case
-														when t.SourceCurrency='CLP'
-														then t.GrossAmountSC/t.CLPExchangeRate
-														when t.SourceCurrency='ARS'
-														then t.GrossAmountSC/t.ARSExchangeRate
-														else 0
-													end 
-													as AmountTOPUP,
-													0 
-													as AmountMT,
-													0 
-													as FeeTOTAL,
-													0 
-													as SpreadTOTAL,
-													case
-														when t.SourceCurrency='CLP'
-														then 0
-														when t.SourceCurrency='ARS'
-														then t.VATSC/t.ARSExchangeRate
-														else 0
-													end 
-													as VAT
-
-													from TransactionalBase t
-													where t.Source='Wallet' and t.status!='REVERSED'
-											) x
-											where year(x.Date)=@year and month(x.Date)=@month
-											group by year(x.Date), month(x.Date), x.SourceCountryName, x.SourceCountryCode, x.TargetCountryName, x.TargetCountryCode, x.Client
-											order by [year] desc, [month] desc";
-
+			
 
 			using (var ctx = new RemiteeServicesMetricsContext())
 			{
 
 				var inbound = (from t in ctx.TransactionalBases
-							   where t.CreatedAt.Year == year && t.CreatedAt.Month == month
+							   where t.CreatedAt.Year == year && t.CreatedAt.Month == month && t.Status != "REVERSED"
 							   select new TransactionalBase(t, 1)).ToList()
 							   .GroupBy(x => new
 							   {
@@ -1600,8 +1138,8 @@ namespace Remitee.Services.Metrics
 														 .Select(x => new { DateCreated = x.Min(y => y.DateCreated), SenderId = x.Key }) 
 														 on s.AccountId equals ft.SenderId
 							 join tb in ctx.TransactionalBases on t.TrxReference equals tb.LedgerId.ToString()
-							 where t.DateCreated.Year == year && t.DateCreated.Month == month
-							 select new
+							 where t.DateCreated.Year == year && t.DateCreated.Month == month && tb.Status != "REVERSED"
+							select new
 							 {
 								 SenderId = t.SenderId,
 								 SourceCountryName = tb.SourceCountryName,
@@ -1638,6 +1176,7 @@ namespace Remitee.Services.Metrics
 								 GTV = tb.NetAmountUsd
 							 }).ToList();
 				*/
+
 				var churn = temp.GroupBy(x => new
 										{
 											SenderId = x.SenderId,
@@ -1706,7 +1245,7 @@ namespace Remitee.Services.Metrics
 														 .Select(x => new { DateCreated = x.Min(y => y.DateCreated), ReceiverId = x.Key })
 														 on r.AccountId equals ft.ReceiverId
 							 join tb in ctx.TransactionalBases on t.TrxReference equals tb.LedgerId.ToString()
-							 where t.DateCreated.Year == year && t.DateCreated.Month == month
+							 where t.DateCreated.Year == year && t.DateCreated.Month == month && tb.Status != "REVERSED"
 							 select new
 							 {
 								 ReceiverId = t.ReceiverId,
@@ -2045,20 +1584,44 @@ namespace Remitee.Services.Metrics
 
 			var toUpdate = mapper.Map<List<ModelsTC.Receiver>, List<Models.Tcreceiver>>(users);
 
-			using (var ctx2 = new RemiteeServicesMetricsContext())
-			{
-				ctx2.Tcreceivers.UpdateRange(toUpdate);
-				var entities = ctx2.ChangeTracker.Entries().Where(x => x.State == EntityState.Modified);
-				foreach (var entity in entities)
-				{
-					if (ctx2.Tcreceivers.Where(x => x.Id == Convert.ToInt32(entity.Property("Id").CurrentValue.ToString())).FirstOrDefault() == null)
-					{
-						entity.State = EntityState.Added;
-					}
-				}
-				ctx2.SaveChanges();
+			IList<List<Tcreceiver>> unitsToUpdate = toUpdate.ChunkBy(5000);
 
+			foreach(var unit in unitsToUpdate)
+            {
+				using (var ctx2 = new RemiteeServicesMetricsContext())
+				{
+
+					ctx2.ChangeTracker.AutoDetectChangesEnabled = false;
+					ctx2.Database.SetCommandTimeout(300);
+					foreach(var item in unit)
+                    {
+						var entry = ctx2.Tcreceivers.Find(item.Id);
+
+						if (entry == null)
+                        {
+							ctx2.Tcreceivers.Add(item);
+                        }
+                        else
+                        {
+							ctx2.Entry(entry).CurrentValues.SetValues(item);
+                        }
+					}
+					
+					/*
+					var entities = ctx2.ChangeTracker.Entries().Where(x => x.State == EntityState.Modified);
+					foreach (var entity in entities)
+					{
+						if (ctx2.Tcreceivers.Where(x => x.Id == Convert.ToInt32(entity.Property("Id").CurrentValue.ToString())).FirstOrDefault() == null)
+						{
+							entity.State = EntityState.Added;
+						}
+					}
+					*/
+					ctx2.SaveChanges();
+
+				}
 			}
+			
 		}
 
         private void UpdateTCSenders(DateTime dateFrom)
@@ -2191,19 +1754,42 @@ namespace Remitee.Services.Metrics
 
 			var toUpdate = mapper.Map<List<ModelsTC.Transaction>, List<Models.Tctransaction>>(users);
 
-			using (var ctx2 = new RemiteeServicesMetricsContext())
-			{
-				ctx2.Tctransactions.UpdateRange(toUpdate);
-				var entities = ctx2.ChangeTracker.Entries().Where(x => x.State == EntityState.Modified);
-				foreach (var entity in entities)
-				{
-					if (ctx2.Tctransactions.Where(x => x.Id == Convert.ToInt32(entity.Property("Id").CurrentValue.ToString())).FirstOrDefault() == null)
-					{
-						entity.State = EntityState.Added;
-					}
-				}
-				ctx2.SaveChanges();
+			IList<List<Tctransaction>> unitsToUpdate = toUpdate.ChunkBy(5000);
 
+			foreach (var unit in unitsToUpdate)
+			{
+				using (var ctx2 = new RemiteeServicesMetricsContext())
+				{
+
+					ctx2.ChangeTracker.AutoDetectChangesEnabled = false;
+					ctx2.Database.SetCommandTimeout(300);
+					foreach (var item in unit)
+					{
+						var entry = ctx2.Tctransactions.Find(item.Id);
+
+						if (entry == null)
+						{
+							ctx2.Tctransactions.Add(item);
+						}
+						else
+						{
+							ctx2.Entry(entry).CurrentValues.SetValues(item);
+						}
+					}
+
+					/*
+					var entities = ctx2.ChangeTracker.Entries().Where(x => x.State == EntityState.Modified);
+					foreach (var entity in entities)
+					{
+						if (ctx2.Tcreceivers.Where(x => x.Id == Convert.ToInt32(entity.Property("Id").CurrentValue.ToString())).FirstOrDefault() == null)
+						{
+							entity.State = EntityState.Added;
+						}
+					}
+					*/
+					ctx2.SaveChanges();
+
+				}
 			}
 		}
 		
@@ -2360,10 +1946,10 @@ namespace Remitee.Services.Metrics
 			exchanges.AddRange(conn.ReadData("Comitentes!E32:NE32", conn.fileLocation));
 			exchanges.AddRange(conn.ReadData("Comitentes!E38:NE38", conn.fileLocation));
 			exchanges.AddRange(conn.ReadData("Comitentes!E48:NE48", conn.fileLocation));
-			exchanges.AddRange(conn.ReadData("Comitentes!E49:NE49", conn.fileLocation));
+			//exchanges.AddRange(conn.ReadData("Comitentes!E49:NE49", conn.fileLocation));
 
-			exchanges.AddRange(conn.ReadData("ARS!E260:NE260", conn.fileLocation));
-			exchanges.AddRange(conn.ReadData("Comitentes!E43:NE43", conn.fileLocation));
+			//exchanges.AddRange(conn.ReadData("ARS!E260:NE260", conn.fileLocation));
+			//exchanges.AddRange(conn.ReadData("Comitentes!E43:NE43", conn.fileLocation));
 			var parsedExchanges = exchanges.ParseExchanges(rnd);
 			var filteredExchanges = parsedExchanges.Where(x => x.Date >= dateFrom && x.Date < dateTo);
 			using (var ctx = new RemiteeServicesMetricsContext())
@@ -2394,7 +1980,7 @@ namespace Remitee.Services.Metrics
 			var exRate = Convert.ToDecimal(config.GetSection("AppSettings:ArsRExchangeRate:" + dateFrom.ToString("yyyy-MM-dd") + ":Rate").Value, CultureInfo.InvariantCulture);
 			using (var ctx = new RemiteeServicesMetricsContext())
             {
-				ctx.Database.SetCommandTimeout(new TimeSpan(0, 3, 0));
+				ctx.Database.SetCommandTimeout(new TimeSpan(0, 5, 0));
 				var data = ctx.TransactionalBases
 								   .Where(tb => tb.CreatedAt >= dateFrom
 									   && tb.CreatedAt < dateTo

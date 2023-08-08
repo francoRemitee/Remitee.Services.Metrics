@@ -290,5 +290,41 @@ namespace Remitee.Services.Metrics.Extensions
                 return (object) "";
             }
         }
+
+        public static List<FlatTransaction> AddCollectorDataExtension(this List<FlatTransaction> list, DateTime dateFrom, DateTime dateTo, RemiteeServicesMetricsContext ctx)
+        {
+            
+            var tcReferences = ctx.Tctransactions.Where(x => x.DateCreated >= dateFrom && x.DateCreated < dateTo).Select(x => new { Id = x.Id, ReferenceId = x.TrxReference, SenderId = x.SenderId, ReceiverId = x.ReceiverId }).ToList();
+            foreach (var item in list)
+            {
+                item.ProcessedInCollector = false;
+                if (tcReferences.Select(x => x.ReferenceId?.ToUpper()).Contains(item.LedgerTransactionId.ToString()))
+                {
+                    item.TransactionCollectorTransactionId = tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).Id;
+                    item.SenderUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).SenderId);
+                    item.ReceiverUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).ReceiverId);
+                    item.ProcessedInCollector = true;
+                }
+                else if (tcReferences.Select(x => x.ReferenceId?.ToUpper()).Contains(item.MoneyTransferPaymentId.ToString()?.ToUpper()))
+                {
+                    item.TransactionCollectorTransactionId = tcReferences.First(x => x.ReferenceId?.ToUpper() == item.MoneyTransferPaymentId.ToString()?.ToUpper()).Id;
+                    item.SenderUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.MoneyTransferPaymentId.ToString()?.ToUpper()).SenderId);
+                    item.ReceiverUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.MoneyTransferPaymentId.ToString()?.ToUpper()).ReceiverId);
+                    item.ProcessedInCollector = true;
+                }
+                
+            }
+
+            return list;
+        }
+
+        public static List<List<T>> ChunkBy<T>(this List<T> source, int chunkSize)
+        {
+            return source
+                .Select((x, i) => new { Index = i, Value = x })
+                .GroupBy(x => x.Index / chunkSize)
+                .Select(x => x.Select(v => v.Value).ToList())
+                .ToList();
+        }
     }
 }

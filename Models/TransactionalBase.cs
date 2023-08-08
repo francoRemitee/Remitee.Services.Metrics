@@ -134,6 +134,7 @@ public partial class TransactionalBase
 
     public decimal? MarketPlaceVatAmountUsd { get; set; }
 
+    public virtual ICollection<FlatTransaction> FlatTransactions { get; } = new List<FlatTransaction>();
 
     public TransactionalBase()
     {
@@ -217,31 +218,9 @@ public partial class TransactionalBase
         }
         Source = dtr.ItemArray[2].ToString();
         CreatedAt = Convert.ToDateTime(dtr.ItemArray[3]);
-        if (string.IsNullOrEmpty(dtr.ItemArray[4]?.ToString()))
-        {
-            using (var ctx = new RemiteeServicesMetricsContext())
-            {
-                SourceCountryName = ctx.Tccountries.Where(x => x.Id == dtr.ItemArray[5].ToString()).FirstOrDefault()?.Description;
-            }
-        }
-        else
-        {
-            SourceCountryName = dtr.ItemArray[4].ToString();
-        }
-
+        SourceCountryName = dtr.ItemArray[4].ToString();
         SourceCountryCode = dtr.ItemArray[5].ToString();
-        if (string.IsNullOrEmpty(dtr.ItemArray[6]?.ToString()))
-        {
-            using (var ctx = new RemiteeServicesMetricsContext())
-            {
-                TargetCountryName = ctx.Tccountries.Where(x => x.Id == dtr.ItemArray[7].ToString()).FirstOrDefault()?.Description;
-            }
-        }
-        else
-        {
-            TargetCountryName = dtr.ItemArray[6].ToString();
-        }
-
+        TargetCountryName = dtr.ItemArray[6].ToString();
         TargetCountryCode = dtr.ItemArray[7]?.ToString();
         Status = dtr.ItemArray[8]?.ToString();
         CollectMethod = dtr.ItemArray[9]?.ToString();
@@ -312,20 +291,8 @@ public partial class TransactionalBase
         }
         PayerRoute = dtr.ItemArray[30]?.ToString();
         Payer = dtr.ItemArray[31]?.ToString();
-        using (var ctx2 = new RemiteeServicesMetricsContext())
-        {
-            ArsexchangeRate = ctx2.ExchangeRates.Where(x => x.Date.Year == Convert.ToDateTime(dtr.ItemArray[3]).Year
-            && x.Date.Month == Convert.ToDateTime(dtr.ItemArray[3]).Month
-            && x.Date.Day == Convert.ToDateTime(dtr.ItemArray[3]).Day
-            && x.TargetCurrency == "ARS").FirstOrDefault()?.ExchangeRate1;
-        }
-        using (var ctx2 = new RemiteeServicesMetricsContext())
-        {
-            ClpexchangeRate = ctx2.ExchangeRates.Where(x => x.Date.Year == Convert.ToDateTime(dtr.ItemArray[3]).Year
-            && x.Date.Month == Convert.ToDateTime(dtr.ItemArray[3]).Month
-            && x.Date.Day == Convert.ToDateTime(dtr.ItemArray[3]).Day
-            && x.TargetCurrency == "CLP").FirstOrDefault()?.ExchangeRate1;
-        }
+        ArsexchangeRate = null;
+        ClpexchangeRate = null;
         if (dtr.ItemArray[34] != DBNull.Value)
         {
             ArsrexchangeRate = Convert.ToDecimal(dtr.ItemArray[34]);
@@ -622,8 +589,8 @@ public partial class TransactionalBase
             {
                 if (tb.TargetCurrency == "ARS")
                 {
-                    SpreadAmountUsd = tb.TargetAmountTc / tb.ArsexchangeRate - tb.NetAmountUsd;
-                    SpreadAmountSc = tb.TargetAmountTc / tb.ArsexchangeRate - tb.NetAmountUsd;
+                    SpreadAmountUsd = tb.NetAmountUsd - tb.TargetAmountTc / tb.ArsexchangeRate ;
+                    SpreadAmountSc = tb.NetAmountUsd - tb.TargetAmountTc / tb.ArsexchangeRate;
                 }
                 else if (tb.SpreadRate == null)
                 {

@@ -14,7 +14,7 @@ namespace DataExport
     {
         static async Task Main(string[] args)
         {
-            var dateTo = new DateTime(2023, 7, 10);//DateTime.UtcNow.Date;
+            var dateTo = new DateTime(2023, 8, 1);//DateTime.UtcNow.Date;
             var dateFrom = new DateTime(2023, 7, 1);
 
             var service = new MetricsService();
@@ -22,8 +22,10 @@ namespace DataExport
             var builder = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
             var config = builder.Build();
+            var tcService = new FlatTransactionsController(config);
 
-
+            
+            
             var connector = new SpreadSheetConnector(config);
             connector.DownloadSharedFile().Wait();
             connector.fileLocation = @"C:\Users\FrancoZeppilli\Documents\Remitee\Innovacion\Metrics\Remitee.Services.Metrics\Descargas\POSICION DIARIA REMITEE 2023.xlsx";
@@ -32,10 +34,12 @@ namespace DataExport
             service.ReadPartnersOperations(connector, dateFrom, dateTo);
             service.UpdateTCTables(dateFrom);
 
+
             service.UpdateTransactionalBase(dateFrom, dateTo, config);
             service.AddArsRExchangeRate(dateFrom, dateTo, config);
+            tcService.UploadData(dateFrom, dateTo);
 
-            if(dateTo.Day <= 5)
+            if (dateTo.Day <= 5)
             {
                 service.UpdateBasicChurn(new List<int> { 1, 19, 4, 5, 18 }, dateFrom.Year, dateFrom.Month, config);
                 service.UpdateSenders(dateFrom.Year, dateFrom.Month, config);

@@ -97,4 +97,6 @@ public partial class Tctransaction
     public DateTime? FileDateCreated { get; set; }
 
     public string? FileNameSaved { get; set; }
+
+    public virtual ICollection<FlatTransaction> FlatTransactions { get; } = new List<FlatTransaction>();
 }
