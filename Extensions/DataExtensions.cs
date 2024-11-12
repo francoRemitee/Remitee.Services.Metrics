@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Remitee.Services.Metrics.Models;
 using System;
@@ -12,85 +13,7 @@ using System.Threading.Tasks;
 namespace Remitee.Services.Metrics.Extensions
 {
     public static class DataExtensions
-    {
-        public static List<TransactionalBase> AddPayersData(this List<TransactionalBase> list, DateTime dateFrom, DateTime dateTo, IConfigurationRoot config)
-        {
-            List<PaymentQuoteElements> payersRecords = new List<PaymentQuoteElements>();
-            var connStrings = config.GetRequiredSection("PayersConnectionStrings").AsEnumerable();
-            Dictionary<string, string> payerQuoteQuery = new Dictionary<string, string>();
-            payerQuoteQuery.Add("PayersConnectionStrings:DLocal", @"select *
-										from dlocal.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:EasyPagos", @"select *
-										from Easypagos.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:Italcambio", @"select i.Id,
-                                        i.TransactionId as InternalTransactionId,
-                                        i.ExchangeRate as PayerExchangeRate,
-                                        p.PayerFee,
-                                        f.BaseFee as PayerFeeExpected,
-                                        i.CreatedAt as CreatedDate
-                                        from Italcambio.ItalcambioCashOutTransactions i
-                                        left join Italcambio.PaymentQuoteElements p on p.InternalTransactionId=i.TransactionId
-                                        left join Italcambio.PayerFees f on f.Currency=i.ReceiveCurrency and i.CreatedAt>=f.ValidFrom and i.CreatedAt<=isnull(f.ValidTo,@dateTo)
-                                        where i.createdAt >= @dateFrom
-                                        and i.createdAt < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:LocalPayment", @"select *
-										from LocalPayment.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:Maxicambios", @"select *
-										from messaging.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:Radar", @"select *
-										from Radar.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:RippleNetCloud", @"select *
-										from messaging.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-            payerQuoteQuery.Add("PayersConnectionStrings:TransferZero", @"select *
-										from TransferZero.PaymentQuoteElements
-										where createdDate >= @dateFrom
-										and createdDate < @dateTo");
-
-            foreach (var connString in connStrings)
-            {
-                if(connString.Value != null)
-                {
-                    using (var connection = new SqlConnection(connString.Value))
-                    {
-                        connection.Open();
-                        SqlCommand command = new SqlCommand();
-                        command.Connection = connection;
-                        command.CommandText = payerQuoteQuery[connString.Key];
-                        command.Parameters.Add("@dateFrom", SqlDbType.Date).Value = dateFrom;
-                        command.Parameters.Add("@dateTo", SqlDbType.Date).Value = dateTo;
-                        payersRecords.AddRange(connection.Query<PaymentQuoteElements>(payerQuoteQuery[connString.Key], new { dateFrom = dateFrom, dateTo = dateTo }));
-
-                        connection.Close();
-                    }
-                }
-               
-            }
-            foreach (var trx in list)
-            {
-                var payerData = payersRecords.Where(y => y.InternalTransactionId == trx.LedgerId).FirstOrDefault();
-                trx.PayerExchangeRate = payerData?.PayerExchangeRate ?? null;
-                trx.RemiteeCalculatedFee = payerData?.RemiteeCalculatedFee ?? null;
-                trx.PayerFee = payerData?.PayerFee ?? null;
-                trx.PayerFeeExpected = payerData?.PayerFeeExpected ?? null;
-                trx.PayerExchangeRateExpected = payerData?.PayerExchangeRateExpected ?? null;
-
-            }
-
-            return list;
-        }
-        
+    {        
         public static List<IList<object>> CreateListOfLists<T>(this IEnumerable<T> entities, bool withHeaders)
         {
             var dt = new List<IList<object>>();
@@ -129,110 +52,372 @@ namespace Remitee.Services.Metrics.Extensions
             {
                 if (data[1][i].ToString().Contains('-'))
                 {
-                    rates.Add(new Models.ExchangeRate("Argentina", "ARG", DateTime.Parse(data[0][i].ToString()).Date, Convert.ToDecimal("0"), "USD", "ARS"));
+                    rates.Add(new Models.ExchangeRate("Argentina", "ARG", DateTime.Parse(data[0][i].ToString()).Date, Convert.ToDecimal("0"), "USD", "CCL"));
                 }
                 else
                 {
-                    rates.Add(new Models.ExchangeRate("Argentina", "ARG", DateTime.Parse(data[0][i].ToString()).Date, Convert.ToDecimal(data[1][i]), "USD", "ARS"));
+                    rates.Add(new Models.ExchangeRate("Argentina", "ARG", DateTime.Parse(data[0][i].ToString()).Date, Convert.ToDecimal(String.IsNullOrEmpty(data[1][i].ToString()) ? "0" : data[1][i]) , "USD", "CCL"));
                 }
                 
             }
             return rates;
         }
 
-        public static List<Models.PartnersOperation> ParseExpenses(this List<IList<object>> data, Random rnd)
+        public static List<Models.ExchangeRate> ParseExchangeRatesVendor(this List<List<object>> data, string countryName, string countryCode, string sourceCurrency, string targetCurrency, string vendor = null)
+        {
+            List<Models.ExchangeRate> rates = new List<Models.ExchangeRate>();
+            for (int i = 0; i < data[0].Count; i++)
+            {
+                DateTime date = new DateTime();
+                if (DateTime.TryParse(data[0][i].ToString(), out date))
+                {
+                    if (data[1][i].ToString().Contains('-'))
+                    {
+                        rates.Add(new Models.ExchangeRate(countryName, countryCode, date.Date, Convert.ToDecimal("0"), sourceCurrency, targetCurrency, vendor));
+                    }
+                    else
+                    {
+                        rates.Add(new Models.ExchangeRate(countryName, countryCode, date.Date, Convert.ToDecimal(String.IsNullOrEmpty(data[1][i].ToString()) ? "0" : data[1][i]), sourceCurrency, targetCurrency, vendor));
+                    }
+                }
+                
+
+            }
+            return rates;
+        }
+
+        public static List<Models.PartnersOperation> ParseExpenses(this List<IList<object>> data, Random rnd, string currency, DateTime dateFrom, DateTime dateTo)
         {
             var operations = new List<Models.PartnersOperation>();
-            
+            int datesRowIndex = 0;
+            int datesStart = 0;
+            int datesEnd = 0;
 
-            for (int i = 1; i < data[0].Count; i++)
+            var comitentesIndex = new Dictionary<string, ComitentesIndexes>();
+            int start = 0;
+            int finish = 1000;
+            string title = "";
+            List<string> expenses = new List<string> { "Comision Banco", 
+                "Impuestos (IVA/IIBB)", 
+                "Ley 25.413", 
+                "Pago a Proveedores", 
+                "Haberes", 
+                "VEPs / Taxs", 
+                "Otros Gastos bancarios" };
+
+            DateTime dateFromParsed;
+            DateTime dateToParsed;
+            for (int j = 0; j < data.Count; j++)
             {
-                for (int j = 1; j < data.Count; j++)
+                if (data[j][10].GetType() == typeof(DateTime))
                 {
-                    if (data[j][i].ToString().Any(char.IsDigit) && Convert.ToDecimal(data[j][i]) != (decimal) 0)
+                    datesRowIndex = j;
+                    for (int k = 0; k < data[j].Count; k++)
+                    {
+                        var parsed = DateTime.TryParse(data[j][k].ToString(), out dateFromParsed);
+                        if (parsed && dateFromParsed == dateFrom)
+                        {
+                            datesStart = k;
+                        }
+                        parsed = DateTime.TryParse(data[j][k].ToString(), out dateToParsed);
+                        if (parsed && dateToParsed == dateTo.AddDays(-1))
+                        {
+                            datesEnd = k + 1;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            for (int j = 0; j < data.Count; j++)
+            {
+                if (data[j][3].ToString().Contains("Disponibilidades al inicio"))
+                {
+                    start = j;
+                }
+                if (data[j][3].ToString().Contains("Disponibilidades al cierre"))
+                {
+                    finish = j;
+                    title = "";
+                    for (int k = start; k < finish; k++)
+                    {
+                        title = title + data[k][2].ToString();
+                        if (title == "TOTAL" + currency.ToUpper())
+                        {
+                            goto blockFound;
+                        }
+                    }
+                }
+            }
+        blockFound:
+
+            var relevantRows = new List<int>();
+
+            for (int j = start; j < finish; j++)
+            {
+                if (expenses.Contains(data[j][3].ToString().TrimStart()))
+                {
+                    relevantRows.Add(j);
+                }
+            }
+            decimal value = 0;
+            for (int i = datesStart; i < datesEnd; i++)
+            {
+                foreach (var j in relevantRows)
+                {                                 
+                    if (Decimal.TryParse(data[j][i].ToString(),out value) && value != (decimal)0)
                     {
 
                         var date = DateTime.Parse(data[0][i].ToString()).AddHours(22).AddMinutes(rnd.Next(60)).AddSeconds(rnd.Next(60)).AddMilliseconds(rnd.Next(1000));
 
-                        if (Convert.ToDecimal(data[j][i])<0)
-                        {
-                            operations.Add(new Models.PartnersOperation(date, "CREDIT", data[j][0].ToString().Trim(), "ARS", null, "REMITEE", Convert.ToDecimal(data[j][i]), null));
-                        }
-                        else
-                        {
-                            operations.Add(new Models.PartnersOperation(date, "DEBIT", data[j][0].ToString().Trim(), "ARS", null, "REMITEE", Convert.ToDecimal(data[j][i]), null));
-                        }
-                    }
+                        operations.Add(new Models.PartnersOperation(date, "DEBIT", data[j][3].ToString().Trim(), currency, null, "REMITEE", Convert.ToDecimal(data[j][i]), null, null));
+
+                    }                     
                 }
             }
 
             return operations;
         }
 
-        public static List<Models.PartnersOperation> ParseExchanges(this List<IList<object>> data, Random rnd)
+        public static List<Models.PartnersOperation> ParseExchanges(this List<IList<object>> data, Random rnd, List<ExchangeRate> exRateOf, DateTime dateFrom, DateTime dateTo)
         {
             var operations = new List<Models.PartnersOperation>();
+            int datesRowIndex = 0;
+            int datesStart = 0;
+            int datesEnd = 0;
 
+            var comitentesIndex = new Dictionary<string, ComitentesIndexes>();
+            int start = 0;
+            int finish = 1000;
 
-            for (int j = 1; j < data.Count; j++)
+            DateTime dateFromParsed;
+            DateTime dateToParsed;
+            for (int j = 0; j < data.Count; j++)
             {
-                for (int i = 1; i < data[j].Count; i++)
+                if (data[j][10].GetType() == typeof(DateTime))
                 {
-                    if (data[j][i].ToString().Any(char.IsDigit) && Convert.ToDecimal(data[j][i]) != (decimal)0)
+                    datesRowIndex = j;
+                    for(int k = 0; k < data[j].Count; k++)
                     {
-                        var date = DateTime.Parse(data[0][i].ToString()).AddHours(22).AddMinutes(rnd.Next(60)).AddSeconds(rnd.Next(60)).AddMilliseconds(rnd.Next(1000));
-
-                        if (Convert.ToDecimal(data[j][i]) < 0)
+                        var parsed = DateTime.TryParse(data[j][k].ToString(), out dateFromParsed);
+                        if (parsed && dateFromParsed == dateFrom)
                         {
-                            if (j < 2)
+                            datesStart = k;
+                        }
+                        parsed = DateTime.TryParse(data[j][k].ToString(), out dateToParsed);
+                        if (parsed && dateToParsed == dateTo.AddDays(-1))
+                        {
+                            datesEnd = k + 1;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            for (int j = 0; j < data.Count; j++)
+            {
+                if (data[j][0].ToString().Contains("Remitee SA") || data[j][0].ToString().Contains("Remitee SPA"))
+                {
+                    if(!data[j-1][0].ToString().Contains("Remitee SA") && !data[j-1][0].ToString().Contains("Remitee SPA"))
+                    {
+                        start = j;
+                    }
+                    if (!data[j+1][0].ToString().Contains("Remitee SA") && !data[j+1][0].ToString().Contains("Remitee SPA"))
+                    {
+                        finish = j;
+                        
+                        var key = "";
+                        var currency = "";
+                        for (int k = start; k < finish; k++)
+                        {
+                            if (data[k][1].ToString().Length > 2)
                             {
-                                operations.Add(new Models.PartnersOperation(date, "DEBIT", "CCL Buy - PORTFOLIO INVESTMENTS", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                key = key + data[k][1].ToString();
                             }
-                            else if (j < 4)
+                            if (data[k][2].ToString() == "ar$")
                             {
-                                operations.Add(new Models.PartnersOperation(date, "DEBIT", "CCL Buy - BALANZ", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                currency = "ARS";
                             }
-                            else if (j < 6)
+                            if (data[k][2].ToString() == "CLP")
                             {
-                                operations.Add(new Models.PartnersOperation(date, "DEBIT", "CCL Buy - LINX", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                currency = "CLP";
                             }
-                            else if (j < 8)
+
+                        }
+                        comitentesIndex[key] = new ComitentesIndexes { AmountIndex = 0, CurrencyIndex = currency, ExRateIndex = 0 };
+                        for (int k = start; k < finish; k++)
+                        {
+                            if (data[k][3].ToString().Contains("Operado en ar$ Bonos"))
                             {
-                                operations.Add(new Models.PartnersOperation(date, "DEBIT", "Intereses", "ARS", null, "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                comitentesIndex[key].AmountIndex = k;
+                            }
+                            if (data[k][3].ToString().Contains("Operado en USD Bonos"))
+                            {
+                                comitentesIndex[key].ExRateIndex = k;
+                                if (currency == "CLP")
+                                {
+                                    comitentesIndex[key].ExRateIndex = k + 3;
+                                }
+                            }
+                            if (data[k][3].ToString().Contains("Operado en Clp Bonos"))
+                            {
+                                comitentesIndex[key].AmountIndex = k;
+                            }
+                            if (data[k][3].ToString().Contains("Intereses"))
+                            {
+                                comitentesIndex[key].AmountIndex = k;
+                            }
+                        }
+                    }
+                    
+                }
+                
+            }
+
+            foreach( var key in comitentesIndex.Keys )
+            {
+                for(int i = datesStart; i < datesEnd; i++)
+                {
+                    if (comitentesIndex[key].AmountIndex > 0 && data[comitentesIndex[key].AmountIndex][i].ToString().Any(char.IsDigit) && Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i]) != (decimal)0)
+                    {
+                        var date = DateTime.Parse(data[datesRowIndex][i].ToString()).AddHours(18).AddMinutes(rnd.Next(60)).AddSeconds(rnd.Next(60)).AddMilliseconds(rnd.Next(1000));
+                        if (Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i]) < 0)
+                        {
+                                
+                            if(comitentesIndex[key].ExRateIndex == 0)
+                            {
+                                operations.Add(new Models.PartnersOperation(date, "DEBIT", key, comitentesIndex[key].CurrencyIndex, null, "REMITEE", Math.Abs(Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i])), null, null));
                             }
                             else
                             {
-                                operations.Add(new Models.PartnersOperation(date, "DEBIT", "CCL Buy - BITZO", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                operations.Add(new Models.PartnersOperation(date, "DEBIT", key, "USD", comitentesIndex[key].CurrencyIndex, "REMITEE", Math.Abs(Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i])), null, null));
                             }
                         }
                         else
                         {
-                            if (j < 2)
+                            var exRate = exRateOf.Where(x => x.Date == date.Date && x.TargetCurrency == "ARS").FirstOrDefault()?.ExchangeRate1;
+                            var clpExRate = exRateOf.Where(x => x.Date == date.Date && x.TargetCurrency == "CLP").FirstOrDefault().ExchangeRate1;
+                            if (comitentesIndex[key].ExRateIndex == 0)
                             {
-                                operations.Add(new Models.PartnersOperation(date, "CREDIT", "CCL Buy - PORTFOLIO INVESTMENTS", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), Convert.ToDecimal(data[j + 1][i])));
-                            }
-                            else if (j < 4)
-                            {
-                                operations.Add(new Models.PartnersOperation(date, "CREDIT", "CCL Buy - BALANZ", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), Convert.ToDecimal(data[j + 1][i])));
-                            }
-                            else if (j < 6)
-                            {
-                                operations.Add(new Models.PartnersOperation(date, "CREDIT", "CCL Buy - LINX", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), Convert.ToDecimal(data[j + 1][i])));
-                            }
-                            else if (j < 8)
-                            {
-                                operations.Add(new Models.PartnersOperation(date, "CREDIT", "Intereses", "ARS", null, "REMITEE", Convert.ToDecimal(data[j][i]), null));
+                                operations.Add(new Models.PartnersOperation(date, "CREDIT", key, comitentesIndex[key].CurrencyIndex, null, "REMITEE", Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i]), null, null));
                             }
                             else
                             {
-                                operations.Add(new Models.PartnersOperation(date, "CREDIT", "CCL Buy - BITZO", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[j][i]), Convert.ToDecimal(data[j + 1][i])));
+                                operations.Add(new Models.PartnersOperation(date, "CREDIT", key, "USD", comitentesIndex[key].CurrencyIndex, "REMITEE", Convert.ToDecimal(data[comitentesIndex[key].AmountIndex][i]), Convert.ToDecimal(data[comitentesIndex[key].ExRateIndex + 1][i]),exRate));
                             }
-                            
-                        } 
+                        }
+                        
+
                     }
                 }
-                j++;
             }
+
+
+            
+
+            return operations;
+        }
+
+        public static List<Models.PartnersOperation> ParseBitsoExchanges(this List<IList<object>> data, List<IList<object>> usdData,Random rnd, List<ExchangeRate> exRateOf, DateTime dateFrom, DateTime dateTo)
+        {
+            var operations = new List<Models.PartnersOperation>();
+            int datesRowIndex = 0;
+            int datesStart = 0;
+            int datesEnd = 0;
+
+            int datesRowIndexUsd = 0;
+            int datesStartUsd = 0;
+            int datesEndUsd = 0;
+
+            var comitentesIndex = new Dictionary<string, ComitentesIndexes>();
+            int start = 0;
+            int finish = 1000;
+            int dataRow = 0;
+            int dataRowUsd = 0;
+
+            DateTime dateFromParsed;
+            DateTime dateToParsed;
+            for (int j = 0; j < data.Count; j++)
+            {
+                if (data[j][10].GetType() == typeof(DateTime))
+                {
+                    datesRowIndex = j;
+                    for (int k = 0; k < data[j].Count; k++)
+                    {
+                        var parsed = DateTime.TryParse(data[j][k].ToString(), out dateFromParsed);
+                        if (parsed && dateFromParsed == dateFrom)
+                        {
+                            datesStart = k;
+                        }
+                        parsed = DateTime.TryParse(data[j][k].ToString(), out dateToParsed);
+                        if (parsed && dateToParsed == dateTo.AddDays(-1))
+                        {
+                            datesEnd = k + 1;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            for (int j = 0; j < usdData.Count; j++)
+            {
+                if (usdData[j][10].GetType() == typeof(DateTime))
+                {
+                    datesRowIndexUsd = j;
+                    for (int k = 0; k < usdData[j].Count; k++)
+                    {
+                        var parsed = DateTime.TryParse(usdData[j][k].ToString(), out dateFromParsed);
+                        if (parsed && dateFromParsed == dateFrom)
+                        {
+                            datesStartUsd = k;
+                        }
+                        parsed = DateTime.TryParse(usdData[j][k].ToString(), out dateToParsed);
+                        if (parsed && dateToParsed == dateTo.AddDays(-1))
+                        {
+                            datesEndUsd = k + 1;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            var titleRow = data.Select(x => x[2].ToString()).ToList().IndexOf("BITSO ARS");
+            dataRow = titleRow;
+            for(int j = titleRow; j > 0; j--)
+            {
+                if (data[j][3].ToString().TrimStart() == "Ingresos Financieros")
+                {
+                    dataRow = j;
+                    break;
+                }
+            }
+            var titleRowUsd = usdData.Select(x => x[2].ToString()).ToList().IndexOf("BITSO USD");
+            dataRowUsd = titleRowUsd;
+            for (int j = titleRowUsd; j < 1000; j++)
+            {
+                if (usdData[j][3].ToString().TrimStart() == "Operaciones Comex")
+                {
+                    dataRowUsd = j;
+                    break;
+                }
+            }
+
+            for (int i = datesStart; i < datesEnd; i++)
+            {
+                
+                if (data[dataRow][i].ToString().Any(char.IsDigit) && Convert.ToDecimal(data[dataRow][i]) != (decimal)0
+                    && usdData[dataRowUsd][i].ToString().Any(char.IsDigit) && Convert.ToDecimal(usdData[dataRowUsd][i]) != (decimal)0)
+                {
+                    var date = DateTime.Parse(data[datesRowIndex][i].ToString()).AddHours(18).AddMinutes(rnd.Next(60)).AddSeconds(rnd.Next(60)).AddMilliseconds(rnd.Next(1000));
+                    var exRate = exRateOf.Where(x => x.Date == date.Date && x.TargetCurrency == "ARS").FirstOrDefault().ExchangeRate1;
+                    operations.Add(new Models.PartnersOperation(date, "CREDIT", "BITSO", "USD", "ARS", "REMITEE", Convert.ToDecimal(data[dataRow][i]), Convert.ToDecimal(data[dataRow][i]) / Convert.ToDecimal(usdData[dataRowUsd][i]), exRate));
+                }
+            }
+            
+
+
+
 
             return operations;
         }
@@ -256,9 +441,29 @@ namespace Remitee.Services.Metrics.Extensions
                         && data[j][1].ToString() != "Pago Principal")
                     {
 
-                        operations.Add(new Models.PartnersOperation(DateTime.Parse(data[0][i].ToString()), "CREDIT", data[1][j].ToString(), "USD", "ARS", data[0][j].ToString(), Convert.ToDecimal(data[j][i]), null));
+                        operations.Add(new Models.PartnersOperation(DateTime.Parse(data[0][i].ToString()), "CREDIT", data[1][j].ToString(), "USD", "ARS", data[0][j].ToString(), Convert.ToDecimal(data[j][i]), null, null));
                         
                     }
+                }
+            }
+
+            return operations;
+        }
+
+        public static List<Models.PartnersOperation> ParseIbPartnerWires(this List<IList<object>> data, Random rnd)
+        {
+            var operations = new List<Models.PartnersOperation>();
+            DateTime date;
+            decimal amount;
+            decimal? exRate;
+
+            for (int i = 0; i < data.Count; i++)
+            {
+                if(DateTime.TryParse(data[i][0].ToString(), out date))
+                {
+                    amount = data[i][3].GetType() == typeof(decimal) ? Convert.ToDecimal(data[i][3]) : (data[i][4].GetType() == typeof(decimal) ? Convert.ToDecimal(data[i][4]) : (data[i][5].GetType() == typeof(decimal) ? Convert.ToDecimal(data[i][5]) : (decimal)0));
+                    exRate = data[i][12].GetType() == typeof(decimal) ? Convert.ToDecimal(data[i][12]) : null;
+                    operations.Add(new PartnersOperation(date, "CREDIT", "IB Wire", data[i][6].ToString(), data[i][6].ToString(), data[i][2].ToString(), amount, exRate, null));
                 }
             }
 
@@ -273,22 +478,30 @@ namespace Remitee.Services.Metrics.Extensions
 
         public static object ParseCell(this ClosedXML.Excel.IXLCell cell)
         {
-            if(cell.Value.IsDateTime)
+            try
             {
-                return (object)cell.GetDateTime();
+                if (cell.Value.IsDateTime)
+                {
+                    return (object)cell.GetDateTime();
+                }
+                else if (cell.Value.IsNumber)
+                {
+                    return (object)cell.GetDouble();
+                }
+                else if (cell.Value.IsText)
+                {
+                    return (object)cell.GetString();
+                }
+                else
+                {
+                    return (object)"";
+                }
             }
-            else if(cell.Value.IsNumber)
+            catch(Exception ex)
             {
-                return (object) cell.GetDouble();
+                return (object)"";
             }
-            else if(cell.Value.IsText)
-            {
-                return (object)cell.GetString();
-            }
-            else
-            {
-                return (object) "";
-            }
+            
         }
 
         public static List<FlatTransaction> AddCollectorDataExtension(this List<FlatTransaction> list, DateTime dateFrom, DateTime dateTo, RemiteeServicesMetricsContext ctx)
@@ -318,6 +531,20 @@ namespace Remitee.Services.Metrics.Extensions
             return list;
         }
 
+        public static IEnumerable<IEnumerable<T>> ToChunks<T>(this IEnumerable<T> enumerable,
+                                                      int chunkSize)
+        {
+            int itemsReturned = 0;
+            var list = enumerable.ToList(); // Prevent multiple execution of IEnumerable.
+            int count = list.Count;
+            while (itemsReturned < count)
+            {
+                int currentChunkSize = Math.Min(chunkSize, count - itemsReturned);
+                yield return list.GetRange(itemsReturned, currentChunkSize);
+                itemsReturned += currentChunkSize;
+            }
+        }
+
         public static List<List<T>> ChunkBy<T>(this List<T> source, int chunkSize)
         {
             return source
@@ -325,6 +552,244 @@ namespace Remitee.Services.Metrics.Extensions
                 .GroupBy(x => x.Index / chunkSize)
                 .Select(x => x.Select(v => v.Value).ToList())
                 .ToList();
+        }
+
+        public static List<TransactionalBase> ProcessFx(this List<TransactionalBase> list)
+        {
+            foreach(var tb in list)
+            {
+                if (tb.Source == "MoneyTransfer")
+                {
+                    if (tb.Client == "REMITEE")
+                    {
+                        if (tb.SourceCurrency == "ARS" && tb.TargetCurrency == "ARS")
+                        {
+                            tb.NetAmountUsd = tb.NetAmountSc / tb.ArsexchangeRate;
+                        }
+                        if (tb.SourceCurrency == "CLP" && tb.TargetCurrency == "ARS")
+                        {
+                            tb.NetAmountUsd = tb.NetAmountSc / tb.ExchangeRateSc;
+                        }  
+                    }
+
+                }
+                if (tb.Source == "Ledger")
+                {
+                    if (tb.TargetCountryCode == "ARG")
+                    {
+                        tb.NetAmountUsd = tb.TargetAmountTc / tb.ArsexchangeRate;
+                    }
+                    if (tb.TargetCountryCode == "CHL")
+                    {
+                        tb.NetAmountUsd = tb.TargetAmountTc / tb.ClpexchangeRate;
+                    }
+                }
+                if (tb.Source == "Wallet")
+                {
+                    if (tb.SourceCurrency == "CLP")
+                    {
+                        tb.NetAmountUsd = tb.NetAmountSc / tb.ClpexchangeRate;
+                    }
+                    if (tb.SourceCurrency == "ARS")
+                    {
+                        tb.NetAmountUsd = tb.NetAmountSc / tb.ArsexchangeRate;
+                    }
+                    if (tb.SourceCurrency != "CLP" && tb.SourceCurrency != "ARS")
+                    {
+                        tb.NetAmountUsd = 0;
+                    }
+                }
+                if (tb.Source == "MoneyTransfer")
+                {
+                    if (tb.Client == "REMITEE" && tb.SourceCurrency == "ARS")
+                    {
+                        tb.FeeAmountUsd = tb.FeeAmountSc / tb.ArsexchangeRate;
+                        tb.Vatusd = tb.Vatrate * tb.FeeAmountSc / tb.ArsexchangeRate;
+                    }
+                    if (tb.Client == "REMITEE" && tb.SourceCurrency == "CLP")
+                    {
+                        tb.FeeAmountUsd = tb.FeeAmountSc / tb.ExchangeRateSc;
+                        tb.Vatusd = tb.Vatrate * tb.FeeAmountSc / tb.ExchangeRateSc;
+                    }
+                }
+                if (tb.Source == "Ledger")
+                {
+                    if (tb.TargetCountryCode == "ARG")
+                    {
+                        tb.FeeAmountUsd = tb.TargetAmountTc * tb.FeeRate / tb.ArsexchangeRate;
+                        tb.Vatusd = tb.Vatrate * tb.TargetAmountTc * tb.FeeRate / tb.ArsexchangeRate;
+                    }
+                    if (tb.TargetCountryCode == "CHL")
+                    {
+                        tb.FeeAmountUsd = tb.TargetAmountTc * tb.FeeRate / tb.ClpexchangeRate;
+                        tb.Vatusd = tb.Vatrate * tb.TargetAmountTc * tb.FeeRate / tb.ClpexchangeRate;
+                    }
+                    if (tb.TargetCountryCode != "ARG" && tb.TargetCountryCode != "CHL")
+                    {
+                        tb.FeeAmountUsd = tb.NetAmountUsd * tb.FeeRate;
+                        tb.Vatusd = tb.Vatrate * tb.NetAmountUsd * tb.FeeRate;
+                    }
+                }
+                if (tb.Source == "Wallet")
+                {
+                    if (tb.SourceCurrency == "CLP")
+                    {
+                        tb.FeeAmountUsd = tb.NetAmountSc * (decimal)0.11 / tb.ClpexchangeRate;
+                        tb.Vatusd = 0;
+                    }
+                    if (tb.SourceCurrency == "ARS")
+                    {
+                        tb.FeeAmountUsd = tb.NetAmountSc * (decimal)0.13 / tb.ArsexchangeRate;
+                        tb.Vatusd = tb.NetAmountSc * (decimal)0.03 * tb.Vatrate / tb.ArsexchangeRate;
+                    }
+                    if (tb.SourceCurrency != "CLP" && tb.SourceCurrency != "ARS")
+                    {
+                        tb.FeeAmountUsd = 0;
+                    }
+                }
+                if (tb.Source == "MoneyTransfer")
+                {
+                    if (tb.Client == "REMITEE")
+                    {
+                        if (tb.SourceCurrency == "ARS")
+                        {
+                            if (tb.TargetCurrency == "ARS")
+                            {
+                                tb.SpreadAmountUsd = tb.NetAmountSc / tb.ArsexchangeRate - tb.TargetAmountTc / tb.ArsexchangeRate;
+                            }
+                            else
+                            {
+                                tb.SpreadAmountUsd = tb.NetAmountSc / tb.ArsexchangeRate - tb.NetAmountUsd;
+                            }
+                        }
+                        else
+                        {
+                            if (tb.TargetCurrency == "ARS")
+                            {
+                                tb.SpreadAmountUsd = tb.NetAmountSc / tb.ExchangeRateSc - tb.TargetAmountTc / tb.ArsexchangeRate;
+                            }
+                            else
+                            {
+                                tb.SpreadAmountUsd = tb.NetAmountSc / tb.ExchangeRateSc - tb.NetAmountUsd;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (tb.TargetCurrency == "ARS")
+                        {
+                            tb.SpreadAmountUsd = tb.NetAmountUsd - tb.TargetAmountTc / tb.ArsexchangeRate;
+                            tb.SpreadAmountSc = tb.NetAmountUsd - tb.TargetAmountTc / tb.ArsexchangeRate;
+                        }
+                        else if (tb.SpreadRate == null)
+                        {
+                            tb.SpreadAmountUsd = 0;
+                        }
+                        else if (tb.TargetCurrency == "VEF")
+                        {
+
+                            tb.SpreadAmountUsd = tb.NetAmountUsd * tb.SpreadRate;
+
+                        }
+                        else
+                        {
+                            tb.SpreadAmountUsd = tb.NetAmountUsd - tb.TargetAmountTc / tb.MarketExchangeRate;
+                        }
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        public static List<TransactionalBase> AddExchangeRateOf(this List<TransactionalBase> list, DateTime dateFrom, DateTime dateTo, IConfigurationRoot config)
+        {
+            var arsOfExRates = new List<ExchangeRate>();
+
+            using(var ctx = new RemiteeServicesMetricsContext(config))
+            {
+                arsOfExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+                && x.Date <= dateTo
+                && x.TargetCurrency == "ARS").ToList();
+            }
+            foreach(var item in list)
+            {
+                item.ArsExchangeRateOf = arsOfExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+            }
+
+            return list;
+        }
+
+        
+
+        public static List<TransactionalBase> AddExchangeRates(this List<TransactionalBase> list, 
+            DateTime dateFrom, 
+            DateTime dateTo, 
+            IConfigurationRoot config, 
+            bool includeArsExchangeRate = true,
+            bool includeClpExchangeRate = true,
+            bool includeArsOfExchangeRate = true,
+            bool includeMarketExchangeRate = true)
+        {
+            var arsExRates = new List<ExchangeRate>();
+            var arsOfExRates = new List<ExchangeRate>();
+            var clpExRates = new List<ExchangeRate>();
+            var marketExRate = new List<ExchangeRate>();
+
+            using (var ctx = new RemiteeServicesMetricsContext(config))
+            {
+                ctx.ChangeTracker.AutoDetectChangesEnabled = false;
+                ctx.Database.SetCommandTimeout(300);
+
+                arsExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+                && x.Date <= dateTo
+                && x.TargetCurrency == "CCL").ToList();
+                arsOfExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+                && x.Date <= dateTo
+                && x.TargetCurrency == "ARS").ToList();
+                clpExRates = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+                && x.Date <= dateTo
+                && x.TargetCurrency == "CLP").ToList();
+                marketExRate = ctx.ExchangeRates.Where(x => x.Date >= dateFrom
+                && x.Date <= dateTo
+                && x.TargetCurrency != "CCL").ToList();
+            }
+            foreach (var item in list)
+            {
+                if(includeArsExchangeRate)
+                {
+                    item.ArsexchangeRate = arsExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+                }
+                if(includeClpExchangeRate)
+                {
+                    item.ClpexchangeRate = clpExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+                }
+                if(includeArsOfExchangeRate)
+                {
+                    item.ArsExchangeRateOf = arsOfExRates.Where(x => x.Date == item.CreatedAt.Date).FirstOrDefault().ExchangeRate1;
+                }
+                if(includeMarketExchangeRate)
+                {
+                    if (item.MarketExchangeRate is null && item.TargetCurrency != "USD")
+                    {
+                        item.MarketExchangeRate = marketExRate.Where(x => x.Date == item.CreatedAt.Date && x.TargetCurrency == item.TargetCurrency).FirstOrDefault().ExchangeRate1;
+                    }
+                }
+            }
+            return list;
+        }
+
+        
+
+        
+
+        public static List<List<T>> Pivot<T>(this List<IList<T>> source)
+        {
+            var result = source.SelectMany(inner => inner.Select((item, index) => new { item, index }))
+                .GroupBy(i => i.index, i => i.item)
+                .Select(g => g.ToList())
+                .ToList();
+            return result;
         }
     }
 }

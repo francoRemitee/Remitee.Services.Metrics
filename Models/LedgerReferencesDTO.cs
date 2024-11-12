@@ -8,14 +8,12 @@ namespace Remitee.Services.Metrics.Models
 {
     public class LedgerReferencesDTO
     {
-        public int Id { get; set; }
+        public int LedgerTransactionId { get; set; }
 
-        public int? UserId { get; set; }
+        public int? SenderLedgerUserId { get; set; }
 
-        public int? IBUserId { get; set; }
+        public int? SenderLedgerPartyId { get; set; }
 
-        public int? SenderPartyId { get; set; }
-
-        public int? RecipientPartyId { get; set; }
+        public int? ReceiverLedgerPartyId { get; set; }
     }
 }

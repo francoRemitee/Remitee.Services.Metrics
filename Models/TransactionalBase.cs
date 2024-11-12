@@ -134,6 +134,53 @@ public partial class TransactionalBase
 
     public decimal? MarketPlaceVatAmountUsd { get; set; }
 
+    public decimal? ArsExchangeRateOf { get; set; }
+
+    public long? BillingSiiFolio { get; set; }
+
+    public decimal? BillingTotalAmount { get; set; }
+
+    public decimal? BillingNetTaxed { get; set; }
+
+    public decimal? BillingTaxAmount { get; set; }
+
+    public string? BillingClientName { get; set; }
+
+    public string? BillingClientDocumentNumber { get; set; }
+
+    public DateTime? ForwardedAt { get; set; }
+
+    public DateTime? LastPushedAt { get; set; }
+
+    public DateTime? ForwardedAtFixed { get; set; }
+
+    public DateTime? LastPushedAtFixed { get; set; }
+
+    public DateTime? SettledAtFixed { get; set; }
+
+    public DateTime? CompletedAtFixed { get; set; }
+
+    public DateTime? ReversedAtFixed { get; set; }
+
+    public DateTime? CreatedAtFixed { get; set; }
+
+    public string? StatusFixed { get; set; }
+
+    public decimal? ReferenceExchangeRate { get; set; }
+
+    public decimal? IbSpreadRate { get; set; }
+
+    public decimal? ObSpreadRate { get; set; }
+
+    public decimal? ObFeeAmount { get; set; }
+
+    public string? ObFeeCurrency { get; set; }
+
+    public int? TransactionType { get; set; }
+
+    public string? AccountingPeriod { get; set; }
+
+
     public virtual ICollection<FlatTransaction> FlatTransactions { get; } = new List<FlatTransaction>();
 
     public TransactionalBase()
@@ -207,6 +254,29 @@ public partial class TransactionalBase
         PayerFee = tb.PayerFee;
         PayerFeeExpected = tb.PayerFeeExpected;
         PayerExchangeRateExpected = tb.PayerExchangeRateExpected;
+        ArsExchangeRateOf = tb.ArsExchangeRateOf;
+        BillingClientDocumentNumber = tb.BillingClientDocumentNumber;
+        BillingClientName = tb.BillingClientName;
+        BillingNetTaxed = tb.BillingNetTaxed;
+        BillingSiiFolio = tb.BillingSiiFolio;
+        BillingTaxAmount = tb.BillingTaxAmount;
+        BillingTotalAmount = tb.BillingTotalAmount;
+        ForwardedAt = tb.ForwardedAt;
+        LastPushedAt = tb.LastPushedAt;
+        CreatedAtFixed = tb.CreatedAtFixed;
+        SettledAtFixed = tb.SettledAtFixed;
+        CompletedAtFixed = tb.CompletedAtFixed;
+        ReversedAtFixed = tb.ReversedAtFixed;
+        ForwardedAtFixed = tb.ForwardedAtFixed;
+        LastPushedAtFixed = tb.LastPushedAtFixed;
+        StatusFixed = tb.StatusFixed;
+        ReferenceExchangeRate = tb.ReferenceExchangeRate;
+        IbSpreadRate = tb.IbSpreadRate;
+        ObSpreadRate = tb.ObSpreadRate;
+        ObFeeAmount = tb.ObFeeAmount;
+        ObFeeCurrency = tb.ObFeeCurrency;
+        TransactionType = tb.TransactionType;
+        AccountingPeriod = tb.AccountingPeriod;
     }
 
     public TransactionalBase(DataRow dtr)
@@ -393,6 +463,18 @@ public partial class TransactionalBase
         {
             MarketPlaceVatAmountUsd = Convert.ToDecimal(dtr.ItemArray[58]);
         }
+        if (dtr.ItemArray[59] != DBNull.Value)
+        {
+            ForwardedAt = Convert.ToDateTime(dtr.ItemArray[59]);
+        }
+        if (dtr.ItemArray[60] != DBNull.Value)
+        {
+            LastPushedAt = Convert.ToDateTime(dtr.ItemArray[60]);
+        }
+        if (dtr.ItemArray[61] != DBNull.Value)
+        {
+            TransactionType = Convert.ToInt32(dtr.ItemArray[61]);
+        }
     }
 
     public TransactionalBase(TransactionalBase tb)
@@ -557,7 +639,22 @@ public partial class TransactionalBase
         Vendor = tb.Vendor;
         PayerReferenceId = tb.PayerReferenceId;
         MarketPlaceExchangeRate = tb.MarketPlaceExchangeRate;
-
+        BillingClientDocumentNumber = tb.BillingClientDocumentNumber;
+        BillingClientName = tb.BillingClientName;
+        BillingNetTaxed = tb.BillingNetTaxed;
+        BillingSiiFolio = tb.BillingSiiFolio;
+        BillingTaxAmount = tb.BillingTaxAmount;
+        BillingTotalAmount = tb.BillingTotalAmount;
+        ArsExchangeRateOf = tb.ArsExchangeRateOf;
+        ForwardedAt = tb.ForwardedAt;
+        LastPushedAt = tb.LastPushedAt;
+        CreatedAtFixed = tb.CreatedAtFixed;
+        SettledAtFixed = tb.SettledAtFixed;
+        CompletedAtFixed = tb.CompletedAtFixed;
+        ReversedAtFixed = tb.ReversedAtFixed;
+        ForwardedAtFixed = tb.ForwardedAtFixed;
+        LastPushedAtFixed = tb.LastPushedAtFixed;
+        StatusFixed = tb.StatusFixed;
         if (tb.Source == "MoneyTransfer")
         {
             if (tb.Client == "REMITEE")
@@ -610,4 +707,116 @@ public partial class TransactionalBase
         }
 
     }
+}
+
+public partial class TransactionalBaseDTO
+{
+    public string Id { get; set; } = null!;
+
+    public int? LedgerId { get; set; }
+
+    public string? Source { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public string? SourceCountryName { get; set; }
+
+    public string? SourceCountryCode { get; set; }
+
+    public string? TargetCountryName { get; set; }
+
+    public string? TargetCountryCode { get; set; }
+
+    public string? Status { get; set; }
+
+    public string? CollectMethod { get; set; }
+
+    public string? Client { get; set; }
+
+    public string? Obpartner { get; set; }
+
+    public string? ObpartnerName { get; set; }
+
+    public string? SourceCurrency { get; set; }
+
+    public string? TargetCurrency { get; set; }
+
+    public decimal? NetAmountSc { get; set; }
+
+    public decimal? NetAmountUsd { get; set; }
+
+    public decimal? GrossAmountSc { get; set; }
+
+    public decimal? ExchangeRateSc { get; set; }
+
+    public decimal? SpreadRate { get; set; }
+
+    public decimal? FeeAmountSc { get; set; }
+
+    public decimal? FeeAmountUsd { get; set; }
+
+    public decimal? FeeRate { get; set; }
+
+    public decimal? Vatsc { get; set; }
+
+    public decimal? Vatusd { get; set; }
+
+    public decimal? Vatrate { get; set; }
+
+    public decimal? TargetAmountTc { get; set; }
+
+    public decimal? TargetAmountTcwithoutWithholding { get; set; }
+
+    public decimal? WithholdingIncomeAmount { get; set; }
+
+    public decimal? WithholdingVatAmount { get; set; }
+
+    public decimal? WithholdingIncomeRate { get; set; }
+
+    public decimal? WithholdingVatRate { get; set; }
+
+    public decimal? ExchangeRateTc { get; set; }
+
+    public decimal? MarketExchangeRate { get; set; }
+
+    public string? PayerRoute { get; set; }
+
+    public string? Payer { get; set; }
+
+    public decimal? AccountingFxRate { get; set; }
+
+    public decimal? AccountingFxRateWithoutSp { get; set; }
+
+    public decimal? AccountingNetAmount { get; set; }
+
+    public decimal? SpreadAmountSc { get; set; }
+
+    public string? ClientReferenceId { get; set; }
+
+    public decimal? MarketPlaceFeeAmount { get; set; }
+
+    public decimal? MarketPlaceFeeRate { get; set; }
+
+    public decimal? MarketPlaceVatAmount { get; set; }
+
+    public decimal? MarketPlaceVatRate { get; set; }
+
+    public string? Vendor { get; set; }
+
+    public DateTime? SettledAt { get; set; }
+
+    public DateTime? CompletedAt { get; set; }
+
+    public DateTime? ReversedAt { get; set; }
+
+    public string? PayerReferenceId { get; set; }
+
+    public decimal? MarketPlaceExchangeRate { get; set; }
+
+    public decimal? MarketPlaceFeeAmountUsd { get; set; }
+
+    public decimal? MarketPlaceVatAmountUsd { get; set; }
+
+    public int? TransactionType { get; set; }
+
 }

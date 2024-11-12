@@ -16,8 +16,8 @@ namespace Remitee.Services.Metrics.Controllers
 {
     public class FlatTransactionsController
     {
-        private readonly IConfiguration _configuration;
-        public FlatTransactionsController(IConfiguration config)
+        private readonly IConfigurationRoot _configuration;
+        public FlatTransactionsController(IConfigurationRoot config)
         {
             _configuration = config;
         }
@@ -26,7 +26,7 @@ namespace Remitee.Services.Metrics.Controllers
         {
 			var toUpdate = new List<FlatTransaction>();
 			var updated = new List<FlatTransaction>();
-			using (var ctx = new RemiteeServicesMetricsContext())
+			using (var ctx = new RemiteeServicesMetricsContext(_configuration))
             {
 				toUpdate = ctx.FlatTransactions.Where(x => x.ProcessedInCollector == false).ToList();
 				toUpdate.AddCollectorDataExtension(dateFrom, dateTo, ctx);
@@ -37,6 +37,7 @@ namespace Remitee.Services.Metrics.Controllers
 
         public void UploadData(DateTime dateFrom, DateTime dateTo)
         {
+			
 			string ledgerQuery = @"select
 cast(t.id as nvarchar(50)) as Id,
 null as TransactionCollectorTransactionId,
@@ -132,15 +133,15 @@ tp.tin as ReceiverTaxId
 	
 
       
-  FROM [dbo].[Transactions] t
-  left join Parties sp on sp.id=t.senderPartyId
+  FROM [dbo].[Transactions] t (NOLOCK)
+  left join Parties sp (NOLOCK) on sp.id=t.senderPartyId
   left join Countries spc on spc.id=sp.countryId
   left join Banks spb on spb.id=sp.bankId
-  left join Parties tp on tp.id=t.recipientPartyId
+  left join Parties tp (NOLOCK) on tp.id=t.recipientPartyId
   left join Countries tpc on tpc.id=tp.countryId
   left join Banks tpb on tpb.id=tp.bankId
   left join PartyPaymentMethods tpp on tpp.id=t.recipientPartyCollectMethodId
-  left join Users u on u.id=t.userId or u.id=t.IBuserId
+  left join Users u (NOLOCK) on u.id=t.userId or u.id=t.IBuserId
 
   where t.sourceType=0 and t.createdDate>=@dateFrom and t.createdDate<@dateTo
 and abs(t.status)>=3
@@ -268,7 +269,7 @@ case p.UserInfo_Cdtr_Id_PrvId_Othr_SchmeNm_Cd
 when 7 then p.UserInfo_Cdtr_Id_PrvId_Othr_Id
 else null 
 end as ReceiverTaxId
-from mt.Payments p
+from mt.Payments p (NOLOCK)
 where p.Status in (3,4,5) and p.CreatedAt>=@dateFrom and p.CreatedAt<@dateTo";
 			string walletQuery = @"select 
 cast(o.id as nvarchar(50)) as Id,
@@ -355,12 +356,12 @@ when 'CHECKING' then 'CACC'
 else 'UNKNOWN'
 end as ReceiverBankAccountType,
 c.BankAccount_TaxId as ReceiverTaxId
-from wallet.Operations o
-left join wallet.OperationTransactions ot on ot.OperationId=o.Id
-left join wallet.ShoppingCarts sc on sc.id=o.ShoppingCartId
-left join wallet.Users u on u.id=sc.UserId
-left join wallet.Contacts uc on uc.id=u.ContactId
-left join wallet.Contacts c on c.id=o.ContactId
+from wallet.Operations o (NOLOCK)
+left join wallet.OperationTransactions ot (NOLOCK) on ot.OperationId=o.Id
+left join wallet.ShoppingCarts sc (NOLOCK) on sc.id=o.ShoppingCartId
+left join wallet.Users u (NOLOCK) on u.id=sc.UserId
+left join wallet.Contacts uc (NOLOCK) on uc.id=u.ContactId
+left join wallet.Contacts c (NOLOCK) on c.id=o.ContactId
 where o.CreatedDateUTC>=@dateFrom and o.CreatedDateUTC<@dateTo
 								and o.OperationType='TOPUPS'
 								and o.State in ('COMPLETED','REVERSED')";
@@ -368,76 +369,53 @@ where o.CreatedDateUTC>=@dateFrom and o.CreatedDateUTC<@dateTo
 
 			using (var conn = new SqlConnection(_configuration.GetConnectionString("MoneyTransferConnString")))
             {
-				results.AddRange(conn.Query<FlatTransaction>(moneyTransferQuery,new {dateFrom = dateFrom, dateTo = dateTo}));
+				var tempResult = conn.Query<FlatTransaction>(moneyTransferQuery, new { dateFrom = dateFrom, dateTo = dateTo });
+				results.AddRange(tempResult);
 			}
 			using (var conn = new SqlConnection(_configuration.GetConnectionString("LedgerConnString")))
 			{
-				results.AddRange(conn.Query<FlatTransaction>(ledgerQuery, new { dateFrom = dateFrom, dateTo = dateTo }));
+				var tempResult = conn.Query<FlatTransaction>(ledgerQuery, new { dateFrom = dateFrom, dateTo = dateTo });
+				results.AddRange(tempResult);
 			}
 			using (var conn = new SqlConnection(_configuration.GetConnectionString("WalletConnString")))
 			{
-				results.AddRange(conn.Query<FlatTransaction>(walletQuery, new { dateFrom = dateFrom, dateTo = dateTo }));
+				var tempResult = conn.Query<FlatTransaction>(walletQuery, new { dateFrom = dateFrom, dateTo = dateTo });
+				results.AddRange(tempResult);
 			}
-			results = AddCollectorData(results, dateFrom, dateTo);
+			Console.WriteLine("UploadData.FixCountries Started At: " + DateTime.Now.ToString());
 			results = FixCountryCodes(results);
-			results = AddUsersReferences(results, dateFrom, dateTo);
-
-			using(var ctx = new RemiteeServicesMetricsContext())
-            {
-				foreach(var item in results)
-                {
-					var entry = ctx.FlatTransactions.Find(item.Id);
-
-					if (entry == null)
-					{
-						ctx.FlatTransactions.Add(item);
-					}
-					else
-					{
-						ctx.Entry(entry).CurrentValues.SetValues(item);
-					}
-				}
-				
-				ctx.SaveChanges();
-            }
+			Console.WriteLine("UploadData.Upsert Started At: " + DateTime.Now.ToString());
+			var test = results.Select(x => x.Id).ToArray();
+			BulkOperations.UpsertData(results, _configuration.GetConnectionString("MetricsConnString"), "dbo", "FlatTransactions", "Id");
+		
 		}
 
-		private List<FlatTransaction> AddCollectorData(List<FlatTransaction> list, DateTime dateFrom, DateTime dateTo)
+		public void AddCollectorData(DateTime dateFrom, DateTime dateTo)
         {
-			using (var ctx = new RemiteeServicesMetricsContext())
+			var tcReferences = new List<CollectorDataDTO>();
+			using (var ctx = new RemiteeServicesMetricsContext(_configuration))
             {
-				ctx.ChangeTracker.AutoDetectChangesEnabled = false;
-				ctx.Database.SetCommandTimeout(300);
-				var tcReferences = ctx.Tctransactions.Where(x => x.DateCreated >= dateFrom && x.DateCreated < dateTo).Select(x => new { Id = x.Id, ReferenceId = x.TrxReference, SenderId = x.SenderId, ReceiverId = x.ReceiverId }).ToList();
-				foreach (var item in list)
-				{
-					item.ProcessedInCollector = false;
-					if (tcReferences.Select(x => x.ReferenceId?.ToUpper()).Contains(item.LedgerTransactionId.ToString()))
-                    {
-						item.TransactionCollectorTransactionId = tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).Id;
-						item.SenderUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).SenderId);
-						item.ReceiverUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).ReceiverId);
-						item.ProcessedInCollector = true;
-                    }
-					else if(tcReferences.Select(x => x.ReferenceId?.ToUpper()).Contains(item.MoneyTransferPaymentId.ToString()))
-					{
-						item.TransactionCollectorTransactionId = tcReferences.First(x => x.ReferenceId?.ToUpper() == item.MoneyTransferPaymentId.ToString()?.ToUpper()).Id;
-						item.SenderUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).SenderId);
-						item.ReceiverUniqueId = Guid.Parse(tcReferences.First(x => x.ReferenceId?.ToUpper() == item.LedgerTransactionId.ToString()?.ToUpper()).ReceiverId);
-						item.ProcessedInCollector = true;
-					}
-				}
+				ctx.Database.SetCommandTimeout(600);
+				var tempRef = ctx.Tctransactions.Where(x => x.DateCreated >= dateFrom && x.DateCreated < dateTo)
+					.Select(x => new CollectorDataDTO 
+					{ 
+						TransactionCollectorTransactionId = x.Id, 
+						SenderUniqueId = Guid.Parse(x.SenderId ?? "00000000-0000-0000-0000-000000000000"), 
+						ReceiverUniqueId = Guid.Parse(x.ReceiverId ?? "00000000-0000-0000-0000-000000000000"),
+						ProcessedInCollector = true,
+						LedgerTransactionId = Int32.Parse(x.TrxReference ?? "0")
+                      	}).ToList();
+				tcReferences.AddRange(tempRef);
+				
 			}
-			
-			return list;
-        }
+			BulkOperations.UpdateDataByBatch(tcReferences, _configuration.GetConnectionString("MetricsConnString"), "dbo", "FlatTransactions", "LedgerTransactionId", 50000);
 
-		
+		}
 
 		private List<FlatTransaction> FixCountryCodes(List<FlatTransaction> list)
         {
 			var countries = new List<Tccountry>();
-			using(var ctx = new RemiteeServicesMetricsContext())
+			using(var ctx = new RemiteeServicesMetricsContext(_configuration))
             {
 				countries = ctx.Tccountries.ToList();
             }
@@ -466,53 +444,42 @@ where o.CreatedDateUTC>=@dateFrom and o.CreatedDateUTC<@dateTo
 
 		}
 
-		private List<FlatTransaction> AddUsersReferences(List<FlatTransaction> list, DateTime dateFrom, DateTime dateTo)
+		public void AddUsersReferences(DateTime dateFrom, DateTime dateTo)
         {
 			var references = new List<LedgerReferencesDTO>();
 			var referencesWallet = new List<WalletReferencesDTO>();
 			using (var conn = new SqlConnection(_configuration.GetConnectionString("LedgerConnString")))
 			{
-				var query = @"select t.id,t.userId,t.ibuserId,t.senderPartyId,t.recipientPartyId from Transactions t where t.sourceType=0 and t.createdDate>=@dateFrom and t.createdDate<@dateTo
-and abs(t.status)>=3 ";
+				var query = @"select t.id as LedgerTransactionId,
+							isnull(t.userId,t.ibuserId) as SenderLedgerUserId,
+							t.senderPartyId as SenderLedgerPartyId,
+							t.recipientPartyId as ReceiverLedgerPartyId
+							from Transactions t 
+							where t.createdDate>=@dateFrom 
+							and t.createdDate<@dateTo
+							and abs(t.status)>=3 ";
                 references.AddRange(conn.Query<LedgerReferencesDTO>(query, new { dateFrom = dateFrom, dateTo = dateTo }));
 			}
 			using (var conn = new SqlConnection(_configuration.GetConnectionString("WalletConnString")))
 			{
-				var query = @"select ot.PaymentTransactionId,
-u.Id as SenderUserId,
-uc.Id as SenderContactId,
-c.Id as RecipientContactId
-from wallet.Operations o
-inner join wallet.OperationTransactions ot on ot.OperationId=o.Id
-inner join wallet.ShoppingCarts sc on sc.id=o.ShoppingCartId
-inner join wallet.Users u on u.id=sc.UserId
-inner join wallet.Contacts uc on uc.id=u.ContactId
-inner join wallet.Contacts c on c.id=o.ContactId
-where o.CreatedDateUTC>=@dateFrom and o.CreatedDateUTC<@dateTo
-								and o.OperationType='TOPUPS'
+				var query = @"select ot.PaymentTransactionId as LedgerTransactionId,
+								u.Id as SenderWalletUserId,
+								uc.Id as SenderWalletContactId,
+								c.Id as ReceiverWalletContactId
+								from wallet.Operations o
+								inner join wallet.OperationTransactions ot on ot.OperationId=o.Id
+								inner join wallet.ShoppingCarts sc on sc.id=o.ShoppingCartId
+								inner join wallet.Users u on u.id=sc.UserId
+								inner join wallet.Contacts uc on uc.id=u.ContactId
+								inner join wallet.Contacts c on c.id=o.ContactId
+								where o.CreatedDateUTC>=@dateFrom and o.CreatedDateUTC<@dateTo
+								--and o.OperationType='TOPUPS'
 								and o.State in ('COMPLETED','REVERSED')";
 				referencesWallet.AddRange(conn.Query<WalletReferencesDTO>(query, new { dateFrom = dateFrom, dateTo = dateTo }));
 			}
-			foreach (var item in list)
-            {
-				var ids = references.Select(x => x.Id).ToList();
-				var walletIds = referencesWallet.Select(x => x.PaymentTransactionId).ToList();
-				if(ids.Contains(item.LedgerTransactionId ?? 0))
-                {
-					var temp = references.First(x => x.Id == item.LedgerTransactionId);
-					item.SenderLedgerUserId = temp.UserId ?? temp.IBUserId;
-					item.SenderLedgerPartyId = temp.SenderPartyId;
-					item.ReceiverLedgerPartyId = temp.RecipientPartyId;
-                }
-				else if (walletIds.Contains(item.LedgerTransactionId ?? 0))
-				{
-					var temp = referencesWallet.First(x => x.PaymentTransactionId == item.LedgerTransactionId);
-					item.SenderWalletUserId = temp.SenderUserId;
-					item.SenderWalletContactId = temp.SenderContactId;
-					item.ReceiverWalletContactId = temp.RecipientContactId;
-				}
-			}
-			return list;
+
+			BulkOperations.UpdateData(references, _configuration.GetConnectionString("MetricsConnString"), "dbo", "FlatTransactions", "LedgerTransactionId");
+			BulkOperations.UpdateData(referencesWallet, _configuration.GetConnectionString("MetricsConnString"), "dbo", "FlatTransactions", "LedgerTransactionId");
 		}
 
 	}

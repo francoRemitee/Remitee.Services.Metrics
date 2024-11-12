@@ -19,12 +19,14 @@ public partial class ExchangeRate
 
     public string TargetCurrency { get; set; } = null!;
 
+    public string? Vendor { get; set; }
+
     public ExchangeRate()
     {
 
     }
 
-    public ExchangeRate(string countryName, string countryCode, DateTime date, decimal exchangeRate1, string originCurrency, string targetCurrency)
+    public ExchangeRate(string countryName, string countryCode, DateTime date, decimal exchangeRate1, string originCurrency, string targetCurrency, string? vendor = null)
     {
         Id = Guid.NewGuid();
         CountryName = countryName;
@@ -33,5 +35,6 @@ public partial class ExchangeRate
         ExchangeRate1 = exchangeRate1;
         OriginCurrency = originCurrency;
         TargetCurrency = targetCurrency;
+        Vendor = vendor;
     }
 }

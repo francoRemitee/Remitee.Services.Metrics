@@ -1,13 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Remitee.Services.Metrics.ModelsTC;
 
 public partial class RemiteeServicesTransactionCollectorDbContext : DbContext
 {
-    public RemiteeServicesTransactionCollectorDbContext()
+    static IConfigurationRoot _config;
+    public RemiteeServicesTransactionCollectorDbContext(IConfigurationRoot config)
     {
+        _config = config;
+        Database.SetCommandTimeout(5000);
     }
 
     public RemiteeServicesTransactionCollectorDbContext(DbContextOptions<RemiteeServicesTransactionCollectorDbContext> options)
@@ -25,7 +29,7 @@ public partial class RemiteeServicesTransactionCollectorDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlServer("Server=tcp:remiteesql.database.windows.net,1433;Database=Remitee.Services.TransactionCollectorDb;User Id=franco;Password=yCgmgQA8BFxcTGgZ;MultipleActiveResultSets=True;", builder =>
+        optionsBuilder.UseSqlServer(_config.GetConnectionString("TransactionCollectorConnString"), builder =>
         {
             builder.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
         });

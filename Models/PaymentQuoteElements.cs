@@ -8,9 +8,7 @@ namespace Remitee.Services.Metrics.Models
 {
     public class PaymentQuoteElements
     {
-        public Guid Id { get; set; }
-
-        public int InternalTransactionId { get; set; }
+        public int LedgerId { get; set; }
 
         public decimal? PayerExchangeRate { get; set; }
 
@@ -19,8 +17,6 @@ namespace Remitee.Services.Metrics.Models
         public decimal? PayerFeeExpected { get; set; }
 
         public decimal? PayerExchangeRateExpected { get; set; }
-
-        public DateTime CreatedDate { get; set; }
 
         public decimal? RemiteeCalculatedFee { get; set; }
     }

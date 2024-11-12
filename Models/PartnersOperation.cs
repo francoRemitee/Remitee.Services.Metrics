@@ -23,11 +23,13 @@ public partial class PartnersOperation
 
     public decimal? ExchangeRate { get; set; }
 
+    public decimal? ExchangeRateOf { get; set; }
+
     public PartnersOperation()
     {
 
     }
-    public PartnersOperation(DateTime date, string type, string description, string sourceCurrency, string targetCurrency, string partner, decimal amount, decimal? exchangeRate)
+    public PartnersOperation(DateTime date, string type, string description, string sourceCurrency, string targetCurrency, string partner, decimal amount, decimal? exchangeRate, decimal? exchangeRateOf)
     {
         Id = Guid.NewGuid();
         Date = date;
@@ -38,6 +40,7 @@ public partial class PartnersOperation
         Partner = partner;
         Amount = amount;
         ExchangeRate = exchangeRate;
+        ExchangeRateOf = exchangeRateOf;
     }
 
 }

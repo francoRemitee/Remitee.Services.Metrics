@@ -1,13 +1,17 @@
-﻿using System;
+﻿    using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Remitee.Services.Metrics.Models;
 
 public partial class RemiteeServicesMetricsContext : DbContext
 {
-    public RemiteeServicesMetricsContext()
+    static IConfigurationRoot _config;
+    public RemiteeServicesMetricsContext(IConfigurationRoot config)
     {
+        _config = config;
+        Database.SetCommandTimeout(5000);
     }
 
     public RemiteeServicesMetricsContext(DbContextOptions<RemiteeServicesMetricsContext> options)
@@ -45,16 +49,19 @@ public partial class RemiteeServicesMetricsContext : DbContext
 
     public virtual DbSet<TransactionalBase> TransactionalBases { get; set; }
 
+    public virtual DbSet<TbModifiedFields> TbModifiedFields { get; set; }
+
     public virtual DbSet<PartnersOperation> PartnersOperations { get; set; }
 
     public virtual DbSet<FlatTransaction> FlatTransactions { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlServer("Server=tcp:remiteesql-dev.database.windows.net,1433;Database=Remitee.Services.Dev.Metrics;User Id=Franco.Zeppilli;Password=nQSLT6kg;MultipleActiveResultSets=True;", builder =>
+        optionsBuilder.UseSqlServer(_config.GetConnectionString("MetricsConnString"), builder =>
         {
             builder.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
-        });
+            
+        }).EnableSensitiveDataLogging(true);
         base.OnConfiguring(optionsBuilder);
     }
 
@@ -169,6 +176,7 @@ public partial class RemiteeServicesMetricsContext : DbContext
                 .HasColumnName("ExchangeRate");
             entity.Property(e => e.OriginCurrency).HasMaxLength(3);
             entity.Property(e => e.TargetCurrency).HasMaxLength(3);
+            entity.Property(e => e.Vendor).HasMaxLength(50);
         });
 
         modelBuilder.Entity<Inbound>(entity =>
@@ -325,6 +333,9 @@ public partial class RemiteeServicesMetricsContext : DbContext
             entity.Property(e => e.ArsexchangeRate)
                 .HasColumnType("decimal(20, 8)")
                 .HasColumnName("ARSExchangeRate");
+            entity.Property(e => e.ArsExchangeRateOf)
+                .HasColumnType("decimal(20, 8)")
+                .HasColumnName("ARSExchangeRateOf");
             entity.Property(e => e.ArsrexchangeRate)
                 .HasColumnType("decimal(20, 8)")
                 .HasColumnName("ARSRExchangeRate");
@@ -432,6 +443,69 @@ public partial class RemiteeServicesMetricsContext : DbContext
             entity.Property(e => e.WithholdingVatRate)
                 .HasColumnType("decimal(20, 8)")
                 .HasColumnName("WithholdingVATRate");
+            entity.Property(e => e.BillingTotalAmount)
+               .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.BillingNetTaxed)
+               .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.BillingTaxAmount)
+               .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.CreatedAtFixed).HasPrecision(0);
+            entity.Property(e => e.SettledAtFixed).HasPrecision(0);
+            entity.Property(e => e.CompletedAtFixed).HasPrecision(0);
+            entity.Property(e => e.ForwardedAtFixed).HasPrecision(0);
+            entity.Property(e => e.ReversedAtFixed).HasPrecision(0);
+            entity.Property(e => e.LastPushedAtFixed).HasPrecision(0);
+            entity.Property(e => e.StatusFixed).HasMaxLength(20);
+            entity.Property(e => e.ObFeeCurrency).HasMaxLength(3);
+            entity.Property(e => e.IbSpreadRate).HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ObFeeAmount).HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ObSpreadRate).HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ReferenceExchangeRate).HasColumnType("decimal(20, 8)");
+
+        });
+
+        modelBuilder.Entity<TbModifiedFields>(entity =>
+        {
+            entity.HasKey(e => e.TransactionalBaseId).HasName("PK_TransactionalBaseCosts");
+
+            entity.ToTable("TbModifiedFields");
+
+            entity.Property(e => e.TransactionalBaseId).HasMaxLength(50);
+            entity.Property(e => e.NetAmountUsd)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("NetAmountUSD");
+            entity.Property(e => e.IbSpreadAmountSc)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("IbSpreadAmountSC");
+            entity.Property(e => e.IbSpreadAmountUsd)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("IbSpreadAmountUSD");
+            entity.Property(e => e.IbFeeAmountUsd)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("IbFeeAmountUSD");
+            entity.Property(e => e.IbVatUsd)
+            .HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ObSpreadAmountTc)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("ObSpreadAmountTC");
+            entity.Property(e => e.ObSpreadAmountUsd)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("ObSpreadAmountUSD");
+            entity.Property(e => e.ObFeeAmountTc)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("ObFeeAmountTC");
+            entity.Property(e => e.ObFeeAmountUsd)
+            .HasColumnType("decimal(20, 8)")
+            .HasColumnName("ObFeeAmountUSD");
+            entity.Property(e => e.ObExchangeRate)
+            .HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ObExchangeRateAccounting)
+            .HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ObMarketExchangeRate)
+            .HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.Payed)
+            .HasColumnType("decimal(20, 8)");
+
         });
 
         modelBuilder.Entity<PartnersOperation>(entity =>
@@ -445,6 +519,7 @@ public partial class RemiteeServicesMetricsContext : DbContext
             entity.Property(e => e.Partner).HasMaxLength(50);
             entity.Property(e => e.Amount).HasColumnType("decimal(20, 8)");
             entity.Property(e => e.ExchangeRate).HasColumnType("decimal(20, 8)");
+            entity.Property(e => e.ExchangeRateOf).HasColumnType("decimal(20, 8)");
         });
 
         modelBuilder.Entity<FlatTransaction>(entity =>

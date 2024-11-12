@@ -11,6 +11,8 @@ using Newtonsoft.Json.Linq;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Configuration;
 using Remitee.Services.Metrics.Extensions;
+using Sylvan.Data.Excel;
+using System.Globalization;
 
 namespace Remitee.Services.Metrics.Controllers
 {
@@ -23,7 +25,7 @@ namespace Remitee.Services.Metrics.Controllers
         private readonly string objectId;
         private readonly string driveId;
         private readonly string itemId;
-        private readonly string sharedFile;
+        private readonly string folder;
         public string fileLocation;
 
         public SpreadSheetConnector(IConfigurationRoot config)
@@ -34,11 +36,10 @@ namespace Remitee.Services.Metrics.Controllers
             secretId = config.GetSection("AppSettings").GetSection("Credentials").GetSection("SecretId").Value;
             objectId = config.GetSection("AppSettings").GetSection("Credentials").GetSection("ObjectId").Value;
             driveId = config.GetSection("AppSettings").GetSection("Credentials").GetSection("DriveId").Value;
-            itemId = config.GetSection("AppSettings").GetSection("Credentials").GetSection("ItemId").Value;
-            sharedFile = config.GetSection("AppSettings").GetSection("Credentials").GetSection("SharedFile").Value;
+            folder = config.GetSection("AppSettings").GetSection("Credentials").GetSection("Folder").Value;
         }
 
-        public async Task DownloadSharedFile()
+        public async Task<string> DownloadSharedFile(string fileName)
         {
             var credentials = new ClientSecretCredential(
                 tenantId,
@@ -48,18 +49,24 @@ namespace Remitee.Services.Metrics.Controllers
 
             GraphServiceClient graphClient = new GraphServiceClient(credentials);
 
-            string base64Value = System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sharedFile));
+            //string base64Value = System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sharedFile));
+            string base64Value = System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(folder));
             string encodedUrl = "u!" + base64Value.TrimEnd('=').Replace('/', '_').Replace('+', '-');
 
-            var item = await graphClient.Shares[encodedUrl].DriveItem.GetAsync();
+            var folderItem = await graphClient.Shares[encodedUrl].DriveItem.GetAsync();
+            var folderId = folderItem.Id;
+            var folderChildren = await graphClient.Drives[driveId].Items[folderId].Children.GetAsync();
 
+            var item = folderChildren.Value.Where(x => x.Name == fileName).FirstOrDefault();
+            var itemId = item.Id;
+            
             var request = graphClient
                 .Drives[driveId]
                 .Items[itemId]
                 .Content
                 .ToGetRequestInformation();
 
-            //request.UrlTemplate = request.UrlTemplate.Insert(request.UrlTemplate.Length, "/$value");
+            //request.URI = new Uri(request.URI.OriginalString + "/$value");
             var attachmentStream = graphClient.RequestAdapter.SendPrimitiveAsync<System.IO.Stream>(request).GetAwaiter().GetResult();
             using (FileStream fs = new FileStream(@"C:\Users\FrancoZeppilli\Documents\Remitee\Innovacion\Metrics\Remitee.Services.Metrics\Descargas\" + item.Name, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None, bufferSize: 8 * 1024, useAsync: true))
             {
@@ -67,6 +74,8 @@ namespace Remitee.Services.Metrics.Controllers
                 attachmentStream.CopyTo(fs);
             }
             fileLocation = @"C:\Users\FrancoZeppilli\Documents\Remitee\Innovacion\Metrics\Remitee.Services.Metrics\Descargas\" + item.Name;
+
+            return fileLocation;
         }
 
 
@@ -87,20 +96,128 @@ namespace Remitee.Services.Metrics.Controllers
             return "";
         }
 
-        public List<IList<object>> ReadData(String range, string file)
+        public List<IList<object>> ReadData(string range, string file)
         {
+            
             var result = new List<IList<object>>();
             var wb = new XLWorkbook(file);
             IXLWorksheet ws;
             var values = wb.RangeFromFullAddress(range, out ws);
+            var lastRow = values.LastRowUsed();
             foreach(var row in values.Rows())
             {
-                result.Add(row.Cells().Select(x => x.ParseCell()).ToList());
+                var thisRow = new List<object>();
+                foreach(var cell in row.Cells())
+                {
+                    thisRow.Add(cell.ParseCell());
+                }
+                result.Add(thisRow);
+                if (row == lastRow)
+                {
+                    break;
+                }
+                
             }
 
             return result;
+            
+
+        }
+
+        public List<IList<object>> ReadDataSheet(string range, string file)
+        {
+            var result = new List<IList<object>>();
+            var rowNumber = 0;
+            var row = new List<object>();
+
+            using (ExcelDataReader edr = ExcelDataReader.Create(file))
+            {
+                edr.TryOpenWorksheet(range);
+                while (edr.Read())
+                {
+
+                    for (int i = 0; i < edr.FieldCount; i++)
+                    {
+                        DateTime dateValue;
+                        decimal decimalValue;
+                        try
+                        {
+                            if (decimal.TryParse(edr.GetString(i), NumberStyles.Any, new CultureInfo("es-AR"), out decimalValue))
+                            {
+                                row.Add(decimalValue);
+                            }
+                            else if (DateTime.TryParse(edr.GetString(i), out dateValue))
+                            {
+                                row.Add(dateValue);
+                            }
+                            else
+                            {
+                                row.Add(edr.GetString(i));
+                            }
+                        }
+                        catch(Exception ex)
+                        {
+                            row.Add("");
+                        }
+                        
+
+                    }
+                    result.Add(row);
+                    row = new List<object>();
+
+                }
+                // iterates sheets
+            }
+
+            return result;
+        }
+
+        public List<IList<object>> ReadDataSheet(string range, string file, int columnCount)
+        {
+            var result = new List<IList<object>>();
+            var rowNumber = 0;
+            var row = new List<object>();
+
+            using (ExcelDataReader edr = ExcelDataReader.Create(file))
+            {
+                edr.TryOpenWorksheet(range);
+                while (edr.Read())
+                {
+
+                    for (int i = 0; i < columnCount; i++)
+                    {
+                        DateTime dateValue;
+                        decimal decimalValue;
+                        try
+                        {
+                            if (decimal.TryParse(edr.GetString(i), NumberStyles.Any, new CultureInfo("es-AR"), out decimalValue))
+                            {
+                                row.Add(decimalValue);
+                            }
+                            else if (DateTime.TryParse(edr.GetString(i), out dateValue))
+                            {
+                                row.Add(dateValue);
+                            }
+                            else
+                            {
+                                row.Add(edr.GetString(i));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            row.Add("");
+                        }
 
 
+                    }
+                    result.Add(row);
+                    row = new List<object>();
+
+                }
+                // iterates sheets
+            }
+
+            return result;
         }
 
         private string GetExcelColumnName(int columnNumber)
